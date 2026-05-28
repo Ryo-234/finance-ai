@@ -171,6 +171,8 @@ def get_tool_registry() -> ToolRegistry:
 def _register_default_tools(registry: ToolRegistry) -> None:
     """注册默认工具。"""
     from tools.search import SearchTool
+    from tools.clarification import ask_clarification_tool
+    from tools.view_image import view_image_tool, read_image_as_base64
 
     search_tool = SearchTool()
     registry.register_tool(ToolDefinition(
@@ -178,6 +180,20 @@ def _register_default_tools(registry: ToolRegistry) -> None:
         description="从网络搜索信息",
         func=search_tool.search,
         parameters=search_tool.parameters,
+    ))
+
+    # 注册澄清工具
+    registry.register_tool(ToolDefinition(
+        name="ask_clarification",
+        description="当需要用户更多信息时向用户询问澄清",
+        func=ask_clarification_tool,
+    ))
+
+    # 注册图片查看工具
+    registry.register_tool(ToolDefinition(
+        name="view_image",
+        description="读取图片文件用于视觉理解，支持 jpg/jpeg/png/gif/webp 格式",
+        func=view_image_tool,
     ))
 
 

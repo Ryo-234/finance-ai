@@ -1,8 +1,11 @@
 """FastAPI 应用 - Research Agent Gateway API。"""
 
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+import yaml
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,6 +20,17 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def load_config() -> dict:
+    """从 config.yaml 加载配置。"""
+    config_path = Path(__file__).parent.parent / "config.yaml"
+    if not config_path.exists():
+        logger.warning(f"配置文件不存在: {config_path}")
+        return {}
+
+    with open(config_path, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
 
 
 @asynccontextmanager
@@ -34,19 +48,27 @@ async def lifespan(app: FastAPI):
     registry = get_tool_registry()
     logger.info(f"工具注册表已初始化: {len(registry.list_tools())} 个工具")
 
-    # 初始化 IM 渠道（从配置读取）
-    channel_config = {
-        "feishu": {
-            "enabled": True,  # 已配置完成，开启
-            "app_id": "cli_aa8f12dd26789bcb",
-            "app_secret": "l9zilEnsFlLo7rie4EuRfgid7eRDljPn",
-            "bot_name": "Research_agent",
-        },
-    }
-    try:
-        await init_channels(channel_config)
-    except Exception as e:
-        logger.warning(f"渠道初始化失败（不影响 API 服务）: {e}")
+    # 从 config.yaml 读取 IM 渠道配置
+    config = load_config()
+    feishu_config = config.get("feishu", {})
+
+    if feishu_config.get("enabled", False):
+        channel_config = {
+            "feishu": {
+                "enabled": True,
+                "app_id": feishu_config.get("app_id"),
+                "app_secret": feishu_config.get("app_secret"),
+                "bot_name": feishu_config.get("bot_name", "DeerFlow Bot"),
+                "allowed_users": feishu_config.get("allowed_users", []),
+            },
+        }
+        try:
+            await init_channels(channel_config)
+            logger.info("飞书渠道初始化成功")
+        except Exception as e:
+            logger.warning(f"飞书渠道初始化失败: {e}")
+    else:
+        logger.info("飞书渠道未启用")
 
     yield
 
@@ -96,7 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
     app.include_router(memory.router, prefix="/api/memory", tags=["memory"])
     app.include_router(models.router, prefix="/api/models", tags=["models"])
-    app.include_router(channels.router, prefix="/api/channels", tags=["channels"])
+    app.include_router(channels.router, tags=["channels"])
 
     return app
 

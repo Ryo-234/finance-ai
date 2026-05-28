@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 class ModelConfig:
     """模型配置类。"""
 
+    # 模型提供商：qwen / minimax
+    provider: str = "qwen"
     # 默认模型名称
     default_model: str = "qwen-plus"
     # 温度参数
@@ -30,10 +32,21 @@ def get_model_config() -> ModelConfig:
     """获取模型配置单例。"""
     global _config
     if _config is None:
-        _config = ModelConfig(
-            api_key=os.getenv("DASHSCOPE_API_KEY"),
-            api_base=os.getenv("DASHSCOPE_API_BASE", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-        )
+        # 从环境变量读取配置
+        provider = os.getenv("MODEL_PROVIDER", "qwen")
+
+        if provider == "minimax":
+            _config = ModelConfig(
+                provider="minimax",
+                api_key=os.getenv("MINIMAX_API_KEY"),
+                default_model=os.getenv("MINIMAX_DEFAULT_MODEL", "MiniMax-M2.7-highspeed"),
+            )
+        else:
+            _config = ModelConfig(
+                provider="qwen",
+                api_key=os.getenv("DASHSCOPE_API_KEY"),
+                api_base=os.getenv("DASHSCOPE_API_BASE", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            )
     return _config
 
 
@@ -52,6 +65,17 @@ def create_chat_model(
     返回：
         配置好的聊天模型实例
     """
-    from config.qwen_chat import create_qwen_chat_model
+    config = get_model_config()
 
-    return create_qwen_chat_model(model_name=model_name, temperature=temperature)
+    if config.provider == "minimax":
+        from config.minimax_chat import create_minimax_chat_model
+        return create_minimax_chat_model(
+            model_name=model_name or config.default_model,
+            temperature=temperature or config.temperature,
+        )
+    else:
+        from config.qwen_chat import create_qwen_chat_model
+        return create_qwen_chat_model(
+            model_name=model_name or config.default_model,
+            temperature=temperature or config.temperature,
+        )

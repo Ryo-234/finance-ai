@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Optional, AsyncGenerator
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, AIMessage
@@ -145,6 +145,104 @@ async def chat(request: ChatRequest):
        返回答案 + 新的 thread_id（如果刚创建）
     """
     checkpointer = get_checkpointer()
+
+    # 调用研究流程（带 Checkpointer）
+    result = await _do_chat(
+        message=request.message,
+        thread_id=request.thread_id,
+        user_id=request.context.get("user_id", "default"),
+        checkpointer=checkpointer,
+    )
+
+    return ChatResponse(
+        answer=result.get("answer", ""),
+        thread_id=result.get("thread_id", ""),
+        sources=result.get("sources", []),
+        tasks=result.get("tasks", []),
+        error=result.get("error"),
+    )
+
+
+@router.post("/upload", response_model=ChatResponse)
+async def chat_with_image(
+    message: str = Form(..., description="用户消息"),
+    thread_id: Optional[str] = Form(None, description="线程 ID"),
+    image: UploadFile = File(..., description="图片文件"),
+):
+    """聊天接口 - 支持图片上传。
+
+    工作流程：
+    1. 接收图片并保存到本地
+    2. 调用研究流程，图片路径作为上下文传递
+    3. 返回结果
+    """
+    checkpointer = get_checkpointer()
+
+    # 生成 thread_id
+    if not thread_id:
+        import uuid
+        thread_id = str(uuid.uuid4())[:8]
+        logger.info(f"创建新线程: {thread_id}")
+
+    # 保存图片到 uploads 目录
+    import os
+    import uuid as uuid_lib
+    from pathlib import Path
+
+    uploads_dir = Path(__file__).parent.parent / "uploads"
+    uploads_dir.mkdir(exist_ok=True)
+
+    # 读取图片内容
+    image_data = await image.read()
+    image_ext = os.path.splitext(image.filename)[1] if image.filename else ".png"
+    image_name = f"{uuid_lib.uuid4().hex}{image_ext}"
+    image_path = uploads_dir / image_name
+
+    with open(image_path, "wb") as f:
+        f.write(image_data)
+
+    logger.info(f"图片已保存: {image_path}")
+
+    # 构建带图片路径的消息
+    full_message = f"{message}\n[图片: {image_path}]"
+
+    # 调用研究流程
+    result = await _do_chat(
+        message=full_message,
+        thread_id=thread_id,
+        user_id="default",
+        checkpointer=checkpointer,
+    )
+
+    return ChatResponse(
+        answer=result.get("answer", ""),
+        thread_id=thread_id,
+        sources=result.get("sources", []),
+        tasks=result.get("tasks", []),
+        error=result.get("error"),
+    )
+
+
+async def _do_chat(
+    message: str,
+    thread_id: str,
+    user_id: str,
+    checkpointer,
+) -> dict:
+    """执行聊天逻辑。"""
+    try:
+        result = await run_research(
+            user_input=message,
+            thread_id=thread_id,
+            user_id=user_id,
+            checkpointer=checkpointer,
+        )
+        result["thread_id"] = thread_id
+        return result
+
+    except Exception as e:
+        logger.exception(f"聊天执行失败: {e}")
+        return {"answer": "", "thread_id": thread_id, "error": str(e)}
 
     # 如果没有 thread_id，生成一个（这是新对话）
     thread_id = request.thread_id

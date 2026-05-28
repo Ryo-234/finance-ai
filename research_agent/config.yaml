@@ -36,6 +36,13 @@ logging:
   level: INFO
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
+# 飞书（Feishu）IM 渠道配置
+feishu:
+  enabled: true
+  app_id: "cli_aa8f12dd26789bcb"
+  app_secret: "l9zilEnsFlLo7rie4EuRfgid7eRDljPn"
+  bot_name: "Research_agent"
+
 # MCP (Model Context Protocol) 配置
 mcp:
   enabled: true

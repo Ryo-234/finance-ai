@@ -104,7 +104,12 @@ def _merge_middleware_result(state: dict, result) -> dict:
     merged = {**state}
 
     if hasattr(result, 'updates') and result.updates:
-        merged = {**merged, **result.updates}
+        updates = result.updates
+        # 特殊处理 messages 字段：合并而不是覆盖
+        if "messages" in updates and "messages" in merged:
+            merged["messages"] = list(merged["messages"]) + list(updates["messages"])
+            updates = {k: v for k, v in updates.items() if k != "messages"}
+        merged = {**merged, **updates}
 
     if hasattr(result, 'messages') and result.messages:
         current_messages = merged.get("messages", [])
@@ -117,6 +122,10 @@ def create_research_graph() -> StateGraph:
     """创建研究流程图。
 
     返回编译好的 StateGraph，可以直接调用或添加 checkpointer。
+    支持意图路由：
+    - greeting: 直接返回问候
+    - clarification: 返回澄清问题
+    - task: 正常执行 planner → search → knowledge → synthesizer
     """
     global _graph
 
@@ -135,8 +144,18 @@ def create_research_graph() -> StateGraph:
     # 设置入口点
     builder.set_entry_point("planner")
 
-    # 添加边（固定顺序）
-    builder.add_edge("planner", "search")
+    # 添加条件路由（根据意图类型决定后续流程）
+    builder.add_conditional_edges(
+        "planner",
+        _route_after_planner,
+        {
+            "greeting": END,           # 问候直接结束
+            "clarification": END,      # 澄清直接结束
+            "task": "search",          # 任务继续执行
+        }
+    )
+
+    # 任务流程：search → knowledge → synthesizer → END
     builder.add_edge("search", "knowledge")
     builder.add_edge("knowledge", "synthesizer")
     builder.add_edge("synthesizer", END)
@@ -145,6 +164,28 @@ def create_research_graph() -> StateGraph:
     _graph = builder.compile()
 
     return _graph
+
+
+def _route_after_planner(state: ResearchState) -> Literal["greeting", "clarification", "task"]:
+    """根据意图类型决定后续路由。
+
+    Args:
+        state: 当前状态
+
+    Returns:
+        路由目标：greeting / clarification / task
+    """
+    intent = state.intent if hasattr(state, "intent") else "task"
+
+    # 检查是否需要澄清
+    if hasattr(state, "needs_clarification") and state.needs_clarification:
+        return "clarification"
+
+    # 检查是否是问候
+    if intent == "greeting":
+        return "greeting"
+
+    return "task"
 
 
 def compile_graph(checkpointer: Optional[BaseCheckpointSaver] = None):
@@ -168,7 +209,18 @@ def compile_graph(checkpointer: Optional[BaseCheckpointSaver] = None):
     builder.add_node("synthesizer", _synthesizer_node)
 
     builder.set_entry_point("planner")
-    builder.add_edge("planner", "search")
+
+    # 添加条件路由
+    builder.add_conditional_edges(
+        "planner",
+        _route_after_planner,
+        {
+            "greeting": END,
+            "clarification": END,
+            "task": "search",
+        }
+    )
+
     builder.add_edge("search", "knowledge")
     builder.add_edge("knowledge", "synthesizer")
     builder.add_edge("synthesizer", END)
@@ -367,6 +419,7 @@ async def run_research(
     thread_id: Optional[str] = None,
     user_id: Optional[str] = None,
     checkpointer: Optional[BaseCheckpointSaver] = None,
+    files_metadata: Optional[list] = None,
 ) -> dict:
     """运行研究流程（支持 Checkpointer 持久化）。
 
@@ -398,9 +451,16 @@ async def run_research(
     initial_state = ResearchState(user_input=user_input)
     state_dict = _state_to_dict(initial_state)
 
+    # 添加用户消息到 messages 列表（add_messages 会自动合并）
+    from langchain_core.messages import HumanMessage
+    state_dict["messages"] = [HumanMessage(content=user_input)]
+
     # 添加 thread_id
     if thread_id:
         state_dict["thread_id"] = thread_id
+
+    # 注意：图片路径已在用户消息文本中（由飞书渠道注入）
+    # Planner 会自动检测并加载图片
 
     runtime = _get_runtime_context(thread_id, user_id)
 
@@ -417,12 +477,47 @@ async def run_research(
         # 无持久化，直接执行
         result = await graph.ainvoke(state_dict)
 
+    logger.info(f"图执行完成，intent={result.get('intent')}, needs_clarification={result.get('needs_clarification')}")
+
     # 应用 after_agent 中间件（用于异步任务如记忆更新）
     if _middleware_manager:
         await _middleware_manager.apply_after_agent(result, runtime)
 
+    # 根据意图类型返回不同的响应
+    intent = result.get("intent", "task")
+
+    # 问候响应
+    if intent == "greeting":
+        return {
+            "answer": result.get("greeting_response", ""),
+            "intent": "greeting",
+            "sources": [],
+            "tasks": [],
+            "error": None,
+            "thread_id": thread_id,
+        }
+
+    # 澄清响应
+    if intent == "clarification" or result.get("needs_clarification", False):
+        return {
+            "answer": "",
+            "intent": "clarification",
+            "clarification": {
+                "question": result.get("clarification_question", ""),
+                "type": result.get("clarification_type", "missing_info"),
+                "options": result.get("clarification_options", []),
+                "context": result.get("clarification_context", ""),
+            },
+            "sources": [],
+            "tasks": [],
+            "error": None,
+            "thread_id": thread_id,
+        }
+
+    # 正常任务响应
     return {
         "answer": result.get("final_answer", ""),
+        "intent": "task",
         "sources": result.get("sources", []),
         "tasks": result.get("tasks", []),
         "error": result.get("error"),

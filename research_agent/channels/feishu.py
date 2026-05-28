@@ -77,6 +77,12 @@ class FeishuChannel(Channel):
         # 消息处理
         self._message_lock = asyncio.Lock()
 
+        # Token 缓存（飞书 token 有效期2小时）
+        self._token_cache: dict = {
+            "token": None,
+            "expire_at": 0,
+        }
+
     # =========================================================================
     # Channel 抽象方法实现
     # =========================================================================
@@ -290,24 +296,53 @@ class FeishuChannel(Channel):
 
     async def _ws_receive_loop(self, client) -> None:
         """接收消息循环。"""
+        reconnect_delay = 1  # 重连延迟（秒）
+        max_delay = 60      # 最大延迟
+
         try:
             logger.info("接收循环开始")
-            while self._running and client._conn:
+            while self._running:
                 try:
+                    if not client._conn:
+                        logger.warning("WebSocket 连接已断开，尝试重连...")
+                        if hasattr(client, '_connect'):
+                            await client._connect()
+                        await asyncio.sleep(reconnect_delay)
+                        reconnect_delay = min(reconnect_delay * 2, max_delay)
+                        continue
+
                     logger.info("等待接收消息...")
                     msg = await client._conn.recv()
                     logger.info(f"收到原始数据: {len(msg)} bytes")
-                    # 自己的消息处理逻辑
+
+                    # 重置重连延迟
+                    reconnect_delay = 1
+
+                    # 处理消息
                     await self._handle_ws_frame(msg)
+
+                except asyncio.CancelledError:
+                    logger.info("接收循环被取消")
+                    break
                 except Exception as e:
                     logger.error(f"接收消息异常: {e}")
                     import traceback
                     traceback.print_exc()
-                    break
 
-            # 断开连接
-            if client._auto_reconnect:
-                await client._reconnect()
+                    # 断开时尝试重连
+                    if self._running:
+                        logger.info(f"等待 {reconnect_delay} 秒后重连...")
+                        await asyncio.sleep(reconnect_delay)
+                        reconnect_delay = min(reconnect_delay * 2, max_delay)
+
+                        try:
+                            if hasattr(client, '_connect'):
+                                await client._connect()
+                                logger.info("WebSocket 重连成功")
+                            reconnect_delay = 1
+                        except Exception as re_conn_err:
+                            logger.error(f"重连失败: {re_conn_err}")
+
         except Exception as e:
             logger.error(f"接收循环异常: {e}")
             import traceback
@@ -398,10 +433,30 @@ class FeishuChannel(Channel):
                     content_obj = {"text": content}
 
                 text = ""
+                files_info = []
                 if msg_type == "text":
                     text = content_obj.get("text", "")
                 elif msg_type == "post":
                     text = self._extract_text_from_post({"content": content_obj})
+                elif msg_type == "image":
+                    # 图片消息 - 直接获取 image_key
+                    image_key = content_obj.get("image_key", "")
+                    logger.info(f"图片消息(HTTP): image_key={image_key}")
+                    if image_key:
+                        files_info.append({"type": "image", "key": image_key})
+                    text = "[图片]"
+                elif msg_type == "file":
+                    # 文件消息
+                    file_key = content_obj.get("file_key", "")
+                    if file_key:
+                        files_info.append({"type": "file", "key": file_key})
+                    text = "[文件]"
+                elif msg_type == "audio":
+                    # 音频消息
+                    audio_key = content_obj.get("file_key", "")
+                    if audio_key:
+                        files_info.append({"type": "audio", "key": audio_key})
+                    text = "[音频]"
                 else:
                     text = f"[{msg_type}消息]"
 
@@ -421,6 +476,29 @@ class FeishuChannel(Channel):
                     logger.info(f"用户 {sender_id} 不在白名单中")
                     return
 
+                # 下载图片/文件到本地
+                downloaded_files = []
+                for file_info in files_info:
+                    try:
+                        file_path = await self._download_file(
+                            message_id=message_id,
+                            file_key=file_info["key"],
+                            file_type=file_info["type"],
+                            thread_id=chat_id,
+                        )
+                        if file_path:
+                            downloaded_files.append({
+                                "type": file_info["type"],
+                                "path": file_path,
+                            })
+                            # 将路径替换到文本中
+                            if file_info["type"] == "image":
+                                text = text.replace("[图片]", f"[图片: {file_path}]", 1)
+                            elif file_info["type"] == "file":
+                                text = text.replace("[文件]", f"[文件: {file_path}]", 1)
+                    except Exception as e:
+                        logger.warning(f"下载文件失败: {file_info}, error: {e}")
+
                 # 创建入站消息
                 inbound = self._make_inbound(
                     chat_id=chat_id,
@@ -432,6 +510,10 @@ class FeishuChannel(Channel):
                     "message_id": message_id,
                     "msg_type": msg_type,
                 }
+                # 添加下载的文件信息
+                if downloaded_files:
+                    inbound.metadata["files"] = downloaded_files
+                    logger.info(f"文件已下载: {downloaded_files}")
 
                 # 发送到消息总线
                 if self.bus:
@@ -537,24 +619,68 @@ class FeishuChannel(Channel):
             msg_type = message.message_type
             text = ""
             is_mentioned = True  # 单聊默认都响应
+            files_info = []
 
             if msg_type == "text":
                 # 文本消息
                 content = json.loads(message.content)
                 text = content.get("text", "")
             elif msg_type == "post":
-                # 富文本消息
+                # 富文本消息 - 提取文本和图片/文件
                 content = json.loads(message.content)
-                text = self._extract_text_from_post(content)
+                text, files_info = self._extract_content_and_files(content)
                 # 检查是否@了机器人
                 is_mentioned = self._check_mentioned_in_post(content)
-            elif msg_type in ("image", "file", "audio"):
-                # 媒体消息（简化处理）
-                text = f"[{msg_type}消息]"
+            elif msg_type == "image":
+                # 图片消息 - 直接获取 image_key
+                content = json.loads(message.content)
+                image_key = content.get("image_key", "")
+                logger.info(f"图片消息: image_key={image_key}")
+                if image_key:
+                    files_info.append({"type": "image", "key": image_key})
+                text = "[图片]"
+            elif msg_type == "file":
+                # 文件消息
+                content = json.loads(message.content)
+                file_key = content.get("file_key", "")
+                if file_key:
+                    files_info.append({"type": "file", "key": file_key})
+                text = "[文件]"
+            elif msg_type == "audio":
+                # 音频消息
+                content = json.loads(message.content)
+                audio_key = content.get("file_key", "")
+                if audio_key:
+                    files_info.append({"type": "audio", "key": audio_key})
+                text = "[音频]"
             else:
                 text = f"[未知类型消息: {msg_type}]"
 
-            if not text:
+            # 下载图片/文件到本地
+            downloaded_files = []
+            for file_info in files_info:
+                try:
+                    file_path = await self._download_file(
+                        message_id=message_id,
+                        file_key=file_info["key"],
+                        file_type=file_info["type"],
+                        thread_id=chat_id,
+                    )
+                    if file_path:
+                        downloaded_files.append({
+                            "type": file_info["type"],
+                            "path": file_path,
+                        })
+                        # 将路径替换到文本中
+                        if file_info["type"] == "image":
+                            text = text.replace("[图片]", f"[图片: {file_path}]", 1)
+                        elif file_info["type"] == "file":
+                            text = text.replace("[文件]", f"[文件: {file_path}]", 1)
+                except Exception as e:
+                    logger.warning(f"下载文件失败: {file_info}, error: {e}")
+
+            # 如果没有下载的文件且消息为空，则跳过
+            if not text and not downloaded_files:
                 return
 
             # 群组消息需要@机器人才响应
@@ -577,10 +703,14 @@ class FeishuChannel(Channel):
                 "create_time": message.create_time if hasattr(message, "create_time") else None,
             }
 
+            # 添加下载的文件信息
+            if downloaded_files:
+                inbound.metadata["files"] = downloaded_files
+
             # 发到消息总线
             if self._bus:
                 await self._bus.publish_inbound(inbound)
-                logger.info(f"飞书消息已发布: {chat_id}/{sender_id}")
+                logger.info(f"飞书消息已发布: {chat_id}/{sender_id}, 文件: {downloaded_files}")
 
         except Exception as e:
             logger.exception(f"处理飞书消息事件失败: {e}")
@@ -627,6 +757,120 @@ class FeishuChannel(Channel):
         except Exception:
             return "[富文本消息]"
 
+    def _extract_content_and_files(self, content: dict) -> tuple[str, list]:
+        """从富文本消息中提取文本和文件信息。
+
+        Args:
+            content: 消息内容字典
+
+        Returns:
+            (提取的文本, 文件信息列表)
+        """
+        texts = []
+        files_info = []
+
+        try:
+            if "content" in content:
+                post_content = content["content"]
+                if isinstance(post_content, list):
+                    for section in post_content:
+                        for tag in section:
+                            tag_type = tag.get("tag")
+                            if tag_type == "text":
+                                texts.append(tag.get("text", ""))
+                            elif tag_type == "at":
+                                texts.append(f"@{tag.get('user_name', '')}")
+                            elif tag_type == "img":
+                                # 图片
+                                image_key = tag.get("image_key", "")
+                                if image_key:
+                                    files_info.append({"type": "image", "key": image_key})
+                                    texts.append("[图片]")
+                            elif tag_type == "file":
+                                # 文件
+                                file_key = tag.get("file_key", "")
+                                if file_key:
+                                    files_info.append({"type": "file", "key": file_key})
+                                    texts.append("[文件]")
+
+            return " ".join(texts), files_info
+        except Exception:
+            return "[富文本消息]", []
+
+    async def _download_file(
+        self,
+        message_id: str,
+        file_key: str,
+        file_type: str,
+        thread_id: str,
+    ) -> Optional[str]:
+        """下载飞书文件到本地。
+
+        Args:
+            message_id: 消息 ID（用于获取资源）
+            file_key: 文件 key
+            file_type: 文件类型 (image/file/audio)
+            thread_id: 线程 ID（用于文件存储）
+
+        Returns:
+            本地文件路径，失败返回 None
+        """
+        import requests
+
+        try:
+            # 获取 access token
+            access_token = await self._get_access_token()
+            if not access_token:
+                logger.error("无法获取 access token")
+                return None
+
+            # 构建下载 URL
+            download_url = f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}/resources/{file_key}?type={file_type}"
+
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+            }
+
+            # 下载文件
+            response = requests.get(download_url, headers=headers, timeout=30)
+            if response.status_code != 200:
+                logger.warning(f"下载文件失败: status={response.status_code}")
+                return None
+
+            content = response.content
+            if not content:
+                logger.warning("下载文件内容为空")
+                return None
+
+            # 确定文件扩展名
+            content_type = response.headers.get("Content-Type", "")
+            if "image" in content_type:
+                ext = ".png" if "png" in content_type else ".jpg"
+            elif "audio" in content_type:
+                ext = ".mp3"
+            else:
+                ext = ".bin"
+
+            # 保存到 uploads 目录
+            from uploads import ensure_uploads_dir, sanitize_filename, generate_unique_filename
+
+            uploads_dir = ensure_uploads_dir(thread_id)
+            seen = {f.name for f in uploads_dir.iterdir() if f.is_file()}
+            filename = generate_unique_filename(f"feishu_{file_key[-12:]}{ext}", seen)
+            file_path = uploads_dir / filename
+
+            with open(file_path, "wb") as f:
+                f.write(content)
+
+            logger.info(f"文件已下载: {file_path}")
+
+            # 返回虚拟路径（AI 看到的路径）
+            return f"/mnt/user-data/uploads/{filename}"
+
+        except Exception as e:
+            logger.exception(f"下载文件失败: {e}")
+            return None
+
     # =========================================================================
     # 发送消息
     # =========================================================================
@@ -670,22 +914,11 @@ class FeishuChannel(Channel):
         try:
             import requests
 
-            # 先获取 access token
-            token_url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
-            token_resp = requests.post(
-                token_url,
-                json={
-                    "app_id": self._app_id,
-                    "app_secret": self._app_secret,
-                },
-                timeout=10,
-            )
-            token_data = token_resp.json()
-            if token_data.get("code") != 0:
-                logger.error(f"获取 access token 失败: {token_data}")
+            # 获取 access token（带缓存）
+            access_token = await self._get_access_token()
+            if not access_token:
+                logger.error("无法获取 access token")
                 return
-
-            access_token = token_data.get("tenant_access_token")
 
             # 发送消息 - receive_id_type 必须作为 URL 参数
             msg_url = "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id"
@@ -693,11 +926,18 @@ class FeishuChannel(Channel):
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
             }
+            # 验证消息内容
+            if not msg.text or len(msg.text.strip()) == 0:
+                logger.warning(f"消息内容为空，跳过发送: chat_id={msg.chat_id}")
+                return
+
             payload = {
                 "receive_id": msg.chat_id,
                 "msg_type": "text",
-                "content": json.dumps({"text": msg.text}),
+                "content": json.dumps({"text": msg.text}, ensure_ascii=False),
             }
+            logger.debug(f"发送消息 payload: {payload}")
+
             if msg.thread_ts:
                 payload["uuid"] = msg.thread_ts
 
@@ -710,12 +950,51 @@ class FeishuChannel(Channel):
             resp_data = response.json()
             if resp_data.get("code") != 0:
                 logger.error(f"发送回复失败: {resp_data}")
+                # token 可能过期，尝试刷新
+                if resp_data.get("code") == 99991663:
+                    self._token_cache["expire_at"] = 0
+                    logger.info("Token 过期，尝试刷新...")
             else:
                 logger.info(f"回复已发送: {msg.chat_id} (thread: {msg.thread_ts})")
 
         except Exception as e:
             logger.exception(f"发送回复消息失败: {e}")
             raise
+
+    async def _get_access_token(self) -> Optional[str]:
+        """获取 access token（带缓存，2小时有效）。"""
+        import time
+
+        # 检查缓存是否有效（提前5分钟刷新）
+        if (self._token_cache["token"] and
+            time.time() < self._token_cache["expire_at"] - 300):
+            return self._token_cache["token"]
+
+        # 请求新 token
+        import requests
+        token_url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+        token_resp = requests.post(
+            token_url,
+            json={
+                "app_id": self._app_id,
+                "app_secret": self._app_secret,
+            },
+            timeout=10,
+        )
+        token_data = token_resp.json()
+        if token_data.get("code") != 0:
+            logger.error(f"获取 access token 失败: {token_data}")
+            return None
+
+        access_token = token_data.get("tenant_access_token")
+        expire = int(token_data.get("expire", 7200))  # 默认2小时
+
+        # 更新缓存
+        self._token_cache["token"] = access_token
+        self._token_cache["expire_at"] = time.time() + expire
+
+        logger.info(f"Token 已更新，有效期 {expire} 秒")
+        return access_token
 
     # =========================================================================
     # 配置

@@ -39,6 +39,7 @@ from middleware.loop_detection import LoopDetectionMiddleware
 from middleware.memory import MemoryMiddleware, MemoryInjectionMiddleware
 from middleware.token_tracking import TokenTrackingMiddleware, TokenBudgetMiddleware
 from middleware.summarization import SummarizationMiddleware, ContextCompressionMiddleware
+from middleware.clarification import ClarificationMiddleware
 
 __all__ = [
     # 基础组件
@@ -61,5 +62,7 @@ __all__ = [
     # 上下文压缩
     "SummarizationMiddleware",
     "ContextCompressionMiddleware",
+    # 澄清
+    "ClarificationMiddleware",
 ]
 

@@ -26,6 +26,9 @@ class ResearchState:
     # 用户输入
     user_input: str = ""
 
+    # 意图类型：greeting / task / clarification
+    intent: str = "task"
+
     # 任务列表
     tasks: List[Dict[str, Any]] = field(default_factory=list)
 
@@ -50,8 +53,8 @@ class ResearchState:
     # 记忆上下文
     memory_context: str = ""
 
-    # 消息历史 - 使用 LangChain 消息对象
-    messages: List[BaseMessage] = field(default_factory=list)
+    # 消息历史 - 使用 add_messages 注解，支持自动管理和持久化
+    messages: Annotated[List[BaseMessage], add_messages] = field(default_factory=list)
 
     # 规划输出
     planner_output: str = ""
@@ -61,6 +64,29 @@ class ResearchState:
 
     # 错误信息
     error: Optional[str] = None
+
+    # ============ 澄清相关字段 ============
+    # 是否需要澄清
+    needs_clarification: bool = False
+
+    # 澄清问题
+    clarification_question: str = ""
+
+    # 澄清类型：missing_info / ambiguous_requirement / approach_choice / risk_confirmation / suggestion
+    clarification_type: str = "missing_info"
+
+    # 澄清选项
+    clarification_options: List[str] = field(default_factory=list)
+
+    # 澄清上下文
+    clarification_context: str = ""
+
+    # 问候回复（用于 intent=greeting 时）
+    greeting_response: str = ""
+
+    # ============ 视觉相关字段 ============
+    # 已读取的图片 {path: {base64: str, mime_type: str}}
+    viewed_images: Dict[str, Dict[str, str]] = field(default_factory=dict)
 
     def get_next_task(self) -> Optional[Dict[str, Any]]:
         """获取下一个待执行的任务。"""

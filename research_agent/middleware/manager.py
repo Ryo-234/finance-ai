@@ -171,7 +171,7 @@ class MiddlewareManager:
                         result = result.merge(middleware_result)
                     else:
                         # 如果返回的是 dict，当作 updates 处理
-                        result = result.merge(MiddlewareResult(updated=middleware_result))
+                        result = result.merge(MiddlewareResult(updates=middleware_result))
             except Exception as e:
                 logger.exception(f"中间件 {middleware.name} before_model 执行失败: {e}")
                 result = result.merge(

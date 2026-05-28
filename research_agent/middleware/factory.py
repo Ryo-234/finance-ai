@@ -16,7 +16,9 @@ from middleware import (
     TokenTrackingMiddleware,
     SummarizationMiddleware,
     ContextCompressionMiddleware,
+    ClarificationMiddleware,
 )
+from middleware.view_image import ViewImageMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,8 @@ class MiddlewareFactory:
         "token_tracking": TokenTrackingMiddleware,
         "summarization": SummarizationMiddleware,
         "context_compression": ContextCompressionMiddleware,
+        "clarification": ClarificationMiddleware,
+        "view_image": ViewImageMiddleware,
     }
 
     def __init__(self, config: dict[str, Any] | None = None):
@@ -119,11 +123,13 @@ class MiddlewareFactory:
         # 按优先级顺序创建中间件
         middleware_order = [
             "error_handling",
+            "clarification",  # 早期拦截澄清请求
             "token_tracking",
             "summarization",
             "context_compression",
             "memory",
             "memory_injection",
+            "view_image",  # 在 memory_injection 之后执行
             "loop_detection",
         ]
 
@@ -177,6 +183,14 @@ def create_default_manager() -> MiddlewareManager:
             "enabled": False,
             "order": -5,
             "max_messages": 20,
+        },
+        "clarification": {
+            "enabled": True,
+            "order": -100,  # 很早就执行，优先拦截
+        },
+        "view_image": {
+            "enabled": True,
+            "order": -8,  # 在 memory_injection 之后执行
         },
     }
 

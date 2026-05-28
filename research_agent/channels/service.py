@@ -47,12 +47,28 @@ async def _create_agent_handler():
         logger.info(f"处理消息: chat_id={inbound.chat_id}, user_id={inbound.user_id}, text={inbound.text[:50]}...")
 
         try:
+            # 获取消息中的文件信息
+            files_metadata = inbound.metadata.get("files", [])
+
+            # 构建用户输入（包含文件路径信息）
+            user_input = inbound.text
+            if files_metadata:
+                file_paths = []
+                for f in files_metadata:
+                    if f.get("type") == "image":
+                        file_paths.append(f.get("path", ""))
+                if file_paths:
+                    # 在用户输入中注入图片路径
+                    paths_str = ", ".join(file_paths)
+                    user_input = f"用户上传了图片: {paths_str}\n\n{user_input}"
+
             # 调用研究流程
             result = await run_research(
-                user_input=inbound.text,
+                user_input=user_input,
                 thread_id=inbound.chat_id,  # 使用 chat_id 作为 thread_id
                 user_id=inbound.user_id,
                 checkpointer=checkpointer,
+                files_metadata=files_metadata,
             )
 
             # 获取回复

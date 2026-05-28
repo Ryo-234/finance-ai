@@ -1,0 +1,39 @@
+# Research Agent 依赖
+
+# 核心框架
+langgraph>=0.2.0
+langchain>=0.2.0
+langchain-community>=0.2.0
+
+# 通义千问
+dashscope>=1.20.0
+
+# 异步支持
+aiohttp>=3.9.0
+asyncio-throttle>=1.0.0
+
+# 向量数据库
+chromadb>=0.4.0
+
+# 搜索工具
+tavily-python>=0.3.0
+duckduckgo-search>=5.0.0
+
+# 文本处理
+tiktoken>=0.5.0
+
+# 配置管理
+pyyaml>=6.0
+pydantic>=2.0.0
+
+# MCP (Model Context Protocol) 支持
+langchain-mcp-adapters>=0.1.0
+
+# 测试
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# 开发工具
+ruff>=0.1.0
+black>=23.0.0
+python-dotenv>=1.0.0

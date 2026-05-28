@@ -1,0 +1,82 @@
+# Research Agent 配置文件
+
+# 模型配置
+models:
+  default: gpt-4o
+  temperature: 0.7
+  max_tokens: 4096
+  thinking_enabled: false
+
+# 记忆系统配置
+memory:
+  enabled: true
+  injection_enabled: true
+  storage_path: ""  # 空=按用户隔离存储
+  debounce_seconds: 30.0
+  model_name: null  # null=使用默认模型
+  max_facts: 100
+  fact_confidence_threshold: 0.7
+  max_injection_tokens: 2000
+
+# 工具配置
+tools:
+  search_enabled: true
+  search_provider: tavily  # tavily / duckduckgo
+  rag_enabled: true
+  rag_vector_store_path: ./data/vector_store
+  rag_top_k: 5
+
+# 向量存储配置
+vector_store:
+  type: chroma  # chroma / faiss
+  persist_directory: ./data/vector_store
+
+# 日志配置
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# MCP (Model Context Protocol) 配置
+mcp:
+  enabled: true
+  # 自定义拦截器路径列表，格式: "pkg.module:builder_func"
+  interceptors: []
+
+  # MCP 服务器配置
+  servers:
+    # 文件系统服务器
+    filesystem:
+      enabled: true
+      type: stdio
+      command: C:/Program Files/nodejs/npx.cmd
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
+      description: "提供文件系统访问"
+
+    # GitHub 服务器示例（默认禁用）
+    # github:
+    #   enabled: false
+    #   type: stdio
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-github"]
+    #   env:
+    #     GITHUB_TOKEN: ${GITHUB_TOKEN}
+    #   description: "提供 GitHub API 访问"
+
+    # HTTP/SSE 服务器示例（默认禁用）
+    # remote:
+    #   enabled: false
+    #   type: sse  # 或 http
+    #   url: "https://mcp.example.com/sse"
+    #   headers:
+    #     Authorization: "Bearer ${MCP_TOKEN}"
+    #   description: "远程 MCP 服务器"
+
+    # Slack 服务器示例（默认禁用）
+    # slack:
+    #   enabled: false
+    #   type: stdio
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-slack"]
+    #   env:
+    #     SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+    #   description: "提供 Slack API 访问"

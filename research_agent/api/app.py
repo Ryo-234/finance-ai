@@ -114,10 +114,10 @@ def create_app() -> FastAPI:
 
     # 注册路由
     app.include_router(health.router, prefix="/api", tags=["health"])
-    app.include_router(threads.router, prefix="/api/threads", tags=["threads"])
+    app.include_router(threads.router, tags=["threads"])
     app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
-    app.include_router(memory.router, prefix="/api/memory", tags=["memory"])
-    app.include_router(models.router, prefix="/api/models", tags=["models"])
+    app.include_router(memory.router, tags=["memory"])
+    app.include_router(models.router, tags=["models"])
     app.include_router(channels.router, tags=["channels"])
 
     return app

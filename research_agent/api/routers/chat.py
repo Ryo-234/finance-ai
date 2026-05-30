@@ -287,6 +287,9 @@ async def chat_stream(request: ChatRequest):
 
     checkpointer = get_checkpointer()
 
+    # 保存用户消息到历史缓存
+    _save_message(request.thread_id, "human", request.message)
+
     async def generate():
         try:
             # 先发送一个开始信号
@@ -299,6 +302,11 @@ async def chat_stream(request: ChatRequest):
                 user_id=request.context.get("user_id", "default"),
                 checkpointer=checkpointer,
             )
+
+            # 保存 AI 回复到历史缓存
+            answer = result.get("answer", "")
+            if answer:
+                _save_message(request.thread_id, "ai", answer)
 
             # 分块发送结果
             answer = result.get("answer", "")

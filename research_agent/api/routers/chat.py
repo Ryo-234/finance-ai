@@ -44,18 +44,30 @@ router = APIRouter()
 # 全局 Checkpointer（生产环境应该用 SQLite 或 PostgreSQL）
 _checkpointer: Optional[InMemorySaver] = None
 
+# 消息历史缓存：thread_id -> [{"role": "...", "content": "...", "timestamp": ...}, ...]
+# 由于 InMemorySaver 的 channel_values 不完整存储所有字段，
+# 用此缓存作为消息历史的补充来源
+_message_history: dict[str, list[dict]] = {}
+
 
 def get_checkpointer() -> InMemorySaver:
-    """获取或创建 Checkpointer。
-
-    开发环境用 InMemorySaver（内存，重启丢失）
-    生产环境应该用 SQLite 或 PostgreSQL
-    """
+    """获取或创建 Checkpointer。"""
     global _checkpointer
     if _checkpointer is None:
         _checkpointer = InMemorySaver()
         logger.info("创建了新的 InMemorySaver Checkpointer（开发模式）")
     return _checkpointer
+
+
+def _save_message(thread_id: str, role: str, content: str) -> None:
+    """将消息保存到历史缓存。"""
+    if thread_id not in _message_history:
+        _message_history[thread_id] = []
+    _message_history[thread_id].append({
+        "role": role,
+        "content": content,
+        "timestamp": time.time(),
+    })
 
 
 def reset_checkpointer() -> None:
@@ -225,11 +237,21 @@ async def chat_with_image(
 
 async def _do_chat(
     message: str,
-    thread_id: str,
+    thread_id: Optional[str],
     user_id: str,
     checkpointer,
 ) -> dict:
     """执行聊天逻辑。"""
+    import uuid
+
+    # 没有 thread_id 时自动生成
+    if not thread_id:
+        thread_id = str(uuid.uuid4())[:8]
+        logger.info(f"自动生成 thread_id: {thread_id}")
+
+    # 保存用户消息到历史缓存
+    _save_message(thread_id, "human", message)
+
     try:
         result = await run_research(
             user_input=message,
@@ -238,11 +260,19 @@ async def _do_chat(
             checkpointer=checkpointer,
         )
         result["thread_id"] = thread_id
+
+        # 保存 AI 回复到历史缓存
+        answer = result.get("answer", "")
+        if answer:
+            _save_message(thread_id, "ai", answer)
+
         return result
 
     except Exception as e:
         logger.exception(f"聊天执行失败: {e}")
-        return {"answer": "", "thread_id": thread_id, "error": str(e)}
+        error_msg = str(e)
+        _save_message(thread_id, "ai", f"错误: {error_msg}")
+        return {"answer": "", "thread_id": thread_id, "error": error_msg}
 
 
 @router.post("/stream")
@@ -301,14 +331,24 @@ async def chat_stream(request: ChatRequest):
 async def get_messages(thread_id: str, limit: int = 50):
     """获取线程的消息历史。
 
-    从 Checkpointer 读取存档，还原消息历史。
+    优先使用消息缓存（_message_history），缓存中同时包含人类消息和 AI 回复。
+    如果缓存中没有，回退到 Checkpointer 读取存档。
     """
-    checkpointer = get_checkpointer()
-
     try:
-        config = {"configurable": {"thread_id": thread_id}}
+        # 优先从缓存读取
+        if thread_id in _message_history:
+            messages = _message_history[thread_id]
+            if limit and len(messages) > limit:
+                messages = messages[-limit:]
+            return {
+                "thread_id": thread_id,
+                "messages": messages,
+                "count": len(messages),
+            }
 
-        # 从 Checkpointer 获取最新的检查点
+        # 回退：从 Checkpointer 读取
+        checkpointer = get_checkpointer()
+        config = {"configurable": {"thread_id": thread_id}}
         checkpoint_tuple = checkpointer.get_tuple(config)
 
         if checkpoint_tuple is None:
@@ -318,17 +358,27 @@ async def get_messages(thread_id: str, limit: int = 50):
                 "count": 0,
             }
 
-        # 提取消息列表
         checkpoint = checkpoint_tuple.checkpoint
         channel_values = checkpoint.get("channel_values", {})
         messages = channel_values.get("messages", [])
+        final_answer = channel_values.get("final_answer", "")
+        greeting_response = channel_values.get("greeting_response", "")
 
-        # 格式化消息为前端可读格式
         formatted = format_messages_for_display(messages)
 
-        # 限制返回数量
+        # 将 AI 回复也加入
+        ai_answer = final_answer or greeting_response
+        if ai_answer and ai_answer.strip():
+            formatted.append({
+                "role": "ai",
+                "content": ai_answer,
+            })
+
         if limit and len(formatted) > limit:
             formatted = formatted[-limit:]
+
+        # 将回退获取的消息同步到缓存
+        _message_history[thread_id] = formatted
 
         return {
             "thread_id": thread_id,

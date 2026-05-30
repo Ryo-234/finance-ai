@@ -37,6 +37,7 @@ export function useChat(): UseChatReturn {
   const [isLoading, setIsLoading] = useState(false)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const currentThreadIdRef = useRef<string | null>(null)
 
   // 加载线程列表
   const loadThreads = useCallback(async () => {
@@ -74,12 +75,19 @@ export function useChat(): UseChatReturn {
   // 选择线程
   const selectThread = useCallback((id: string | undefined) => {
     if (!id) {
+      currentThreadIdRef.current = null
       setCurrentThread(null)
+      return
+    }
+
+    // 如果点击的是已选中的线程，不做任何操作，避免刷新丢失历史
+    if (currentThreadIdRef.current === id) {
       return
     }
 
     const thread = threads.find(t => t.thread_id === id)
     if (thread) {
+      currentThreadIdRef.current = thread.thread_id
       const extendedThread: CurrentThread = {
         threadId: thread.thread_id,
         messages: [],
@@ -103,6 +111,7 @@ export function useChat(): UseChatReturn {
     try {
       const thread = await api.createThread()
       setThreads(prev => [thread, ...prev])
+      currentThreadIdRef.current = thread.thread_id
       setCurrentThread({
         threadId: thread.thread_id,
         messages: [],
@@ -206,6 +215,7 @@ export function useChat(): UseChatReturn {
       await api.deleteThread(id)
       setThreads(prev => prev.filter(t => t.thread_id !== id))
       if (currentThread?.threadId === id) {
+        currentThreadIdRef.current = null
         setCurrentThread(null)
       }
     } catch (error) {

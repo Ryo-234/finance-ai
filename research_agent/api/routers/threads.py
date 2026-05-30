@@ -122,12 +122,15 @@ def increment_message_count(thread_id: str) -> None:
 # API 路由
 # ============================================================================
 
+class CreateThreadRequest(BaseModel):
+    """创建线程请求体。"""
+    channel: str = "api"
+    chat_id: str = "anonymous"
+    user_id: Optional[str] = None
+
+
 @router.post("/", response_model=ThreadResponse)
-async def create_thread(
-    channel: str = "api",
-    chat_id: str = "anonymous",
-    user_id: Optional[str] = None,
-):
+async def create_thread(body: CreateThreadRequest):
     """创建新线程。
 
     流程：
@@ -137,7 +140,7 @@ async def create_thread(
 
     IM 渠道调用时会传入 channel 和 chat_id。
     """
-    thread_id = create_thread_meta(channel, chat_id, user_id)
+    thread_id = create_thread_meta(body.channel, body.chat_id, body.user_id)
     meta = _threads_meta[thread_id]
 
     return ThreadResponse(

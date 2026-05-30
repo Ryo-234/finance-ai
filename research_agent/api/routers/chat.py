@@ -244,34 +244,6 @@ async def _do_chat(
         logger.exception(f"聊天执行失败: {e}")
         return {"answer": "", "thread_id": thread_id, "error": str(e)}
 
-    # 如果没有 thread_id，生成一个（这是新对话）
-    thread_id = request.thread_id
-    if not thread_id:
-        import uuid
-        thread_id = str(uuid.uuid4())[:8]  # 短 ID 方便展示
-        logger.info(f"创建新线程: {thread_id}")
-
-    try:
-        # 调用研究流程（带 Checkpointer）
-        result = await run_research(
-            user_input=request.message,
-            thread_id=thread_id,
-            user_id=request.context.get("user_id", "default"),
-            checkpointer=checkpointer,
-        )
-
-        return ChatResponse(
-            answer=result.get("answer", ""),
-            thread_id=thread_id,
-            sources=result.get("sources", []),
-            tasks=result.get("tasks", []),
-            error=result.get("error"),
-        )
-
-    except Exception as e:
-        logger.exception(f"聊天执行失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.post("/stream")
 async def chat_stream(request: ChatRequest):
@@ -334,23 +306,34 @@ async def get_messages(thread_id: str, limit: int = 50):
     checkpointer = get_checkpointer()
 
     try:
-        # 获取该线程的所有检查点
         config = {"configurable": {"thread_id": thread_id}}
 
-        # 从 Checkpointer 获取最新状态
-        from langgraph.checkpoint.base import empty_checkpoint
+        # 从 Checkpointer 获取最新的检查点
+        checkpoint_tuple = checkpointer.get_tuple(config)
 
-        # 尝试获取该线程的历史
-        # 注意：InMemorySaver 的 API 可能不同，这里用简化版
-        checkpoint_data = {}
+        if checkpoint_tuple is None:
+            return {
+                "thread_id": thread_id,
+                "messages": [],
+                "count": 0,
+            }
 
-        # 简化实现：直接返回空列表
-        # 生产环境应该用更完整的 Checkpointer API
+        # 提取消息列表
+        checkpoint = checkpoint_tuple.checkpoint
+        channel_values = checkpoint.get("channel_values", {})
+        messages = channel_values.get("messages", [])
+
+        # 格式化消息为前端可读格式
+        formatted = format_messages_for_display(messages)
+
+        # 限制返回数量
+        if limit and len(formatted) > limit:
+            formatted = formatted[-limit:]
 
         return {
             "thread_id": thread_id,
-            "messages": [],
-            "count": 0,
+            "messages": formatted,
+            "count": len(formatted),
         }
 
     except Exception as e:

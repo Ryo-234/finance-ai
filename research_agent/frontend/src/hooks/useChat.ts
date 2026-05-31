@@ -175,7 +175,28 @@ export function useChat(): UseChatReturn {
           // 完成更新
           setCurrentThread(prev => {
             if (!prev) return prev
-            // 更新任务状态
+            const lastMessage = prev.messages[prev.messages.length - 1]
+            // 如果没有流式 chunk（如问候），用 answer 补上 AI 消息
+            if (response.answer && (!lastMessage || lastMessage.role !== 'ai')) {
+              return {
+                ...prev,
+                status: 'idle',
+                tasks: response.tasks || [],
+                messages: [...prev.messages, { role: 'ai', content: response.answer }],
+              }
+            }
+            // 如果有流式 chunk，确保最终内容与 answer 一致
+            if (response.answer && lastMessage && lastMessage.role === 'ai' && lastMessage.content !== response.answer) {
+              return {
+                ...prev,
+                status: 'idle',
+                tasks: response.tasks || [],
+                messages: [
+                  ...prev.messages.slice(0, -1),
+                  { ...lastMessage, content: response.answer },
+                ],
+              }
+            }
             return {
               ...prev,
               status: 'idle',

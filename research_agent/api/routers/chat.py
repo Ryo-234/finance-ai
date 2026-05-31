@@ -318,8 +318,8 @@ async def chat_stream(request: ChatRequest):
                 yield f"event: chunk\ndata: {json.dumps({'text': chunk})}\n\n"
                 await asyncio.sleep(0.01)  # 小延迟，让前端有时间处理
 
-            # 发送完成信号
-            yield f"event: done\ndata: {json.dumps({'answer': answer, 'sources': result.get('sources', [])})}\n\n"
+            # 发送完成信号（含 tasks，供前端渲染动态进度时间线）
+            yield f"event: done\ndata: {json.dumps({'answer': answer, 'sources': result.get('sources', []), 'tasks': result.get('tasks', [])})}\n\n"
 
         except Exception as e:
             logger.exception(f"流式聊天失败: {e}")

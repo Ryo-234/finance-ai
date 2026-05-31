@@ -319,18 +319,29 @@ async def _search_node(state: ResearchState) -> dict:
         if hasattr(state, 'get_next_task'):
             task = state.get_next_task()
             all_tasks = state.tasks if hasattr(state, 'tasks') else []
+            # 在任务列表中查找当前任务的索引
+            task_index = next((i for i, t in enumerate(all_tasks) if t is task), -1)
         else:
             all_tasks = state_dict.get("tasks", [])
-            current_index = state_dict.get("current_task_index", 0)
-            task = all_tasks[current_index] if current_index < len(all_tasks) else None
+            task_index = state_dict.get("current_task_index", 0)
+            task = all_tasks[task_index] if task_index < len(all_tasks) else None
 
 
-        if task and task.get("task_type") == "search":
+        if task and task.get("task_type") == "search" and task_index >= 0:
+            # 更新任务状态为运行中
+            all_tasks[task_index]["status"] = "running"
+            state_dict["tasks"] = all_tasks
+
             result = await search_agent.ainvoke(state_dict, query=task.get("description"))
             if isinstance(result, dict):
                 state_dict = {**state_dict, **result}
                 sr = state_dict.get("search_results", "")
+
+            # 更新任务状态为已完成
+            all_tasks[task_index]["status"] = "completed"
+            state_dict["tasks"] = all_tasks
         else:
+                pass
     except Exception as e:
         logger.error(f"Search 执行失败: {e}")
         state_dict = {**state_dict, **{
@@ -384,15 +395,26 @@ async def _knowledge_node(state: ResearchState) -> dict:
     try:
         if hasattr(state, 'get_next_task'):
             task = state.get_next_task()
+            all_tasks = state.tasks if hasattr(state, 'tasks') else []
+            # 在任务列表中查找当前任务的索引
+            task_index = next((i for i, t in enumerate(all_tasks) if t is task), -1)
         else:
-            tasks = state_dict.get("tasks", [])
-            current_index = state_dict.get("current_task_index", 0)
-            task = tasks[current_index] if current_index < len(tasks) else None
+            all_tasks = state_dict.get("tasks", [])
+            task_index = state_dict.get("current_task_index", 0)
+            task = all_tasks[task_index] if task_index < len(all_tasks) else None
 
-        if task and task.get("task_type") == "knowledge":
+        if task and task.get("task_type") == "knowledge" and task_index >= 0:
+            # 更新任务状态为运行中
+            all_tasks[task_index]["status"] = "running"
+            state_dict["tasks"] = all_tasks
+
             result = await knowledge_agent.ainvoke(state_dict, query=task.get("description"))
             if isinstance(result, dict):
                 state_dict = {**state_dict, **result}
+
+            # 更新任务状态为已完成
+            all_tasks[task_index]["status"] = "completed"
+            state_dict["tasks"] = all_tasks
     except Exception as e:
         logger.error(f"Knowledge 执行失败: {e}")
         state_dict = {**state_dict, **{
@@ -419,6 +441,14 @@ async def _synthesizer_node(state: ResearchState) -> dict:
     synthesizer = registry.get_agent("synthesizer")
 
     try:
+        # 更新合成任务状态为运行中
+        tasks = state_dict.get("tasks", [])
+        for i, t in enumerate(tasks):
+            if t.get("task_type") in ("synthesize", "synthesizer"):
+                tasks[i]["status"] = "running"
+                state_dict["tasks"] = tasks
+                break
+
         sr = state_dict.get("search_results", "")
         kr = state_dict.get("knowledge_results", "")
         result = await synthesizer.ainvoke(state_dict)
@@ -426,6 +456,13 @@ async def _synthesizer_node(state: ResearchState) -> dict:
             state_dict = {**state_dict, **result}
         else:
             state_dict = {**state_dict, **(_state_to_dict(result))}
+
+        # 更新合成任务状态为已完成
+        for i, t in enumerate(tasks):
+            if t.get("task_type") in ("synthesize", "synthesizer"):
+                tasks[i]["status"] = "completed"
+                state_dict["tasks"] = tasks
+                break
     except Exception as e:
         logger.error(f"Synthesizer 执行失败: {e}")
         state_dict = {**state_dict, **{

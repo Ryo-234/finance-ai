@@ -18,6 +18,7 @@ interface CurrentThread {
   messages: ChatMessage[]
   status: 'idle' | 'busy' | 'streaming'
   tasks: Task[]
+  createdAt: number
 }
 
 export interface UseChatReturn {
@@ -93,6 +94,7 @@ export function useChat(): UseChatReturn {
         messages: [],
         status: thread.status === 'busy' ? 'busy' : 'idle',
         tasks: [],
+        createdAt: thread.created_at,
       }
       setCurrentThread(extendedThread)
     }
@@ -117,6 +119,7 @@ export function useChat(): UseChatReturn {
         messages: [],
         status: 'idle',
         tasks: [],
+        createdAt: thread.created_at,
       })
     } catch (error) {
       console.error('创建线程失败:', error)

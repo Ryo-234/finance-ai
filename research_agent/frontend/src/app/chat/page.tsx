@@ -5,14 +5,14 @@ import { Search, Plus, Trash2, Send, Bot, User, Loader2, MessageSquare, Sparkles
 import { useChat } from '@/hooks/useChat'
 import { cn } from '@/lib/utils'
 
-// 任务阶段配置 - 暖色系
-const TASK_STAGES = [
-  { key: 'planner', label: '规划', color: 'bg-amber-500', lightColor: 'bg-amber-100', textColor: 'text-amber-600' },
-  { key: 'search', label: '搜索', color: 'bg-orange-500', lightColor: 'bg-orange-100', textColor: 'text-orange-600' },
-  { key: 'rag', label: 'RAG', color: 'bg-rose-500', lightColor: 'bg-rose-100', textColor: 'text-rose-600' },
-  { key: 'knowledge', label: '知识库', color: 'bg-stone-500', lightColor: 'bg-stone-100', textColor: 'text-stone-600' },
-  { key: 'synthesizer', label: '汇总', color: 'bg-yellow-500', lightColor: 'bg-yellow-100', textColor: 'text-yellow-600' },
-]
+// 阶段配置字典 - 按 task_type 动态查找，不再硬编码渲染顺序
+const STAGE_CONFIG: Record<string, { label: string; color: string; textColor: string }> = {
+  planner:     { label: '规划',   color: '#d97706', textColor: '#92400e' },
+  search:      { label: '搜索',   color: '#ea580c', textColor: '#9a3412' },
+  knowledge:   { label: '知识库', color: '#78716c', textColor: '#44403c' },
+  rag:         { label: 'RAG',    color: '#e11d48', textColor: '#9f1239' },
+  synthesizer: { label: '汇总',   color: '#ca8a04', textColor: '#854d0e' },
+}
 
 // Logo Animation Component
 function AnimatedLogo({ size = 'default' }: { size?: 'small' | 'default' | 'large' }) {
@@ -179,19 +179,13 @@ export default function HomePage() {
     t.thread_id.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  // 判断当前任务阶段
-  const getCurrentStageIndex = () => {
-    if (!currentThread?.tasks.length) return -1
-    const runningTask = currentThread.tasks.find(t => t.status === 'running')
-    if (!runningTask) {
-      const completed = currentThread.tasks.filter(t => t.status === 'completed').length
-      if (completed === currentThread.tasks.length) return TASK_STAGES.length
-      return -1
-    }
-    return TASK_STAGES.findIndex(s => s.key === runningTask.task_type)
+  // 获取需要显示的非 pending 阶段（渐进式披露：只显示已启动/已完成/失败的）
+  const getActiveStages = () => {
+    if (!currentThread?.tasks.length) return []
+    return currentThread.tasks.filter(t => t.status !== 'pending')
   }
 
-  const currentStageIndex = getCurrentStageIndex()
+  const activeStages = getActiveStages()
 
   return (
     <div className="flex h-screen" style={{ background: '#faf8f5' }}>
@@ -360,59 +354,88 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* 阶段进度指示器 */}
-              <div className="flex items-center gap-1">
-                {TASK_STAGES.map((stage, index) => {
-                  const isActive = currentStageIndex === index
-                  const isCompleted = currentStageIndex > index
+              {/* 动态阶段时间线 —— 渐进式披露，只显示实际执行的阶段 */}
+              <div className="flex items-center gap-3">
+                {activeStages.length > 0 && (
+                  <div className="flex items-center">
+                    {activeStages.map((task, index) => {
+                      const cfg = STAGE_CONFIG[task.task_type] || STAGE_CONFIG.planner
+                      const isRunning = task.status === 'running'
+                      const isCompleted = task.status === 'completed'
+                      const isFailed = task.status === 'failed'
+                      const isLast = index === activeStages.length - 1
 
-                  return (
-                    <div key={stage.key} className="flex items-center">
-                      <div className="flex flex-col items-center">
-                        <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-semibold transition-all duration-300"
-                          style={{
-                            background: isActive
-                              ? stage.color
-                              : isCompleted
-                              ? stage.color
-                              : 'rgba(248,250,252,0.8)',
-                            color: isActive || isCompleted ? '#fff' : '#94a3b8',
-                            boxShadow: isActive ? `0 4px 12px ${stage.color}40` : 'none',
-                          }}
-                        >
-                          {isActive ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : isCompleted ? (
-                            '✓'
-                          ) : (
-                            index + 1
+                      return (
+                        <div key={`${task.task_type}-${index}`} className="flex items-center">
+                          {/* 阶段节点 */}
+                          <div
+                            className="flex flex-col items-center animate-stageEnter"
+                            style={{ animationDelay: `${index * 0.25}s` }}
+                          >
+                            <div className="relative flex items-center justify-center">
+                              {/* 活跃脉冲外环 */}
+                              {isRunning && (
+                                <div
+                                  className="absolute rounded-full animate-stagePulse"
+                                  style={{
+                                    width: 32, height: 32,
+                                    border: `2px solid ${cfg.color}`,
+                                  }}
+                                />
+                              )}
+                              {/* 节点圆点 */}
+                              <div
+                                className="w-7 h-7 rounded-full flex items-center justify-center transition-all duration-500 relative z-10"
+                                style={{
+                                  background: isFailed
+                                    ? '#fef2f2'
+                                    : isCompleted
+                                    ? cfg.color
+                                    : cfg.color + '18',
+                                  border: isRunning ? `2px solid ${cfg.color}` : '2px solid transparent',
+                                }}
+                              >
+                                {isFailed ? (
+                                  <span className="text-xs font-bold" style={{ color: '#ef4444' }}>!</span>
+                                ) : isCompleted ? (
+                                  <span className="animate-checkPop text-white text-xs font-bold">✓</span>
+                                ) : isRunning ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: cfg.color }} />
+                                ) : null}
+                              </div>
+                            </div>
+                            {/* 阶段标签 */}
+                            <span
+                              className="text-[10px] mt-1 font-medium whitespace-nowrap"
+                              style={{
+                                color: isFailed ? '#ef4444' : isCompleted ? '#64748b' : cfg.textColor,
+                                fontFamily: isRunning ? "'IBM Plex Sans', monospace" : undefined,
+                              }}
+                            >
+                              {cfg.label}
+                            </span>
+                          </div>
+                          {/* 连接线 —— 非最后一项时显示 */}
+                          {!isLast && (
+                            <div className="relative mx-1 mb-4" style={{ width: 28, height: 2 }}>
+                              <div
+                                className="absolute inset-0 rounded-full"
+                                style={{ background: 'rgba(226,232,240,0.6)' }}
+                              />
+                              <div
+                                className="absolute inset-0 rounded-full animate-lineGrow"
+                                style={{
+                                  background: isCompleted ? cfg.color : 'transparent',
+                                }}
+                              />
+                            </div>
                           )}
                         </div>
-                        <span
-                          className="text-xs mt-1 font-medium"
-                          style={{
-                            color: isActive
-                              ? stage.textColor
-                              : isCompleted
-                              ? '#64748b'
-                              : '#94a3b8',
-                          }}
-                        >
-                          {stage.label}
-                        </span>
-                      </div>
-                      {index < TASK_STAGES.length - 1 && (
-                        <div
-                          className="w-8 h-1 rounded-full mx-1 mb-4 transition-colors duration-300"
-                          style={{
-                            background: isCompleted ? stage.color : 'rgba(226,232,240,0.8)',
-                          }}
-                        />
-                      )}
-                    </div>
-                  )
-                })}
+                      )
+                    })}
+                  </div>
+                )}
+
               </div>
 
               {/* 右侧操作 */}

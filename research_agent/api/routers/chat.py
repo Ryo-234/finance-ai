@@ -277,10 +277,12 @@ async def _do_chat(
 
 @router.post("/stream")
 async def chat_stream(request: ChatRequest):
-    """流式聊天接口。
+    """流式聊天接口 —— 真正的逐 token 流式输出。
 
-    返回 SSE 格式的流式响应。
-    用于 Web 前端实时显示。
+    使用 asyncio.Queue 管道：
+    1. 后台运行 run_research，合成阶段逐 token 写入队列
+    2. 前端从队列读取，实时以 SSE 推送每个 token
+    3. 研究完成后发送 done 事件（含 tasks、sources）
     """
     if not request.thread_id:
         raise HTTPException(status_code=400, detail="thread_id is required for streaming")
@@ -291,39 +293,73 @@ async def chat_stream(request: ChatRequest):
     _save_message(request.thread_id, "human", request.message)
 
     async def generate():
+        stream_queue: asyncio.Queue = asyncio.Queue()
+
+        # 后台任务：运行研究流程，逐 token 写入队列
+        async def run_with_stream():
+            try:
+                result = await run_research(
+                    user_input=request.message,
+                    thread_id=request.thread_id,
+                    user_id=request.context.get("user_id", "default"),
+                    checkpointer=checkpointer,
+                    stream_queue=stream_queue,
+                )
+                return result
+            except Exception as e:
+                logger.exception(f"研究流程执行失败: {e}")
+                await stream_queue.put(("error", str(e)))
+                return None
+
+        research_task = asyncio.create_task(run_with_stream())
+
         try:
-            # 先发送一个开始信号
+            # 发送开始信号
             yield f"event: start\ndata: {json.dumps({'thread_id': request.thread_id})}\n\n"
 
-            # 调用（流式版本暂时返回完整结果，分块发送）
-            result = await run_research(
-                user_input=request.message,
-                thread_id=request.thread_id,
-                user_id=request.context.get("user_id", "default"),
-                checkpointer=checkpointer,
-            )
+            full_answer = ""
+
+            # 从队列读取 token 并实时推送
+            while True:
+                item = await stream_queue.get()
+
+                if item is None:
+                    # None 表示流式结束
+                    break
+
+                if isinstance(item, tuple) and item[0] == "error":
+                    # 错误信号
+                    yield f"event: error\ndata: {json.dumps({'error': item[1]})}\n\n"
+                    return
+
+                # 正常 token
+                chunk = item
+                full_answer += chunk
+                yield f"event: chunk\ndata: {json.dumps({'text': chunk})}\n\n"
+
+            # 等待研究任务完成，获取最终结果
+            result = await research_task
+
+            if result is None:
+                yield f"event: error\ndata: {json.dumps({'error': '研究流程执行失败'})}\n\n"
+                return
+
+            answer = result.get("answer", "") or full_answer
 
             # 保存 AI 回复到历史缓存
-            answer = result.get("answer", "")
             if answer:
                 _save_message(request.thread_id, "ai", answer)
 
-            # 分块发送结果
-            answer = result.get("answer", "")
-
-            # 把答案分成小块发送
-            chunk_size = 50  # 每块 50 个字符
-            for i in range(0, len(answer), chunk_size):
-                chunk = answer[i:i+chunk_size]
-                yield f"event: chunk\ndata: {json.dumps({'text': chunk})}\n\n"
-                await asyncio.sleep(0.01)  # 小延迟，让前端有时间处理
-
-            # 发送完成信号（含 tasks，供前端渲染动态进度时间线）
+            # 发送完成信号（含完整 answer、sources、tasks）
             yield f"event: done\ndata: {json.dumps({'answer': answer, 'sources': result.get('sources', []), 'tasks': result.get('tasks', [])})}\n\n"
 
         except Exception as e:
             logger.exception(f"流式聊天失败: {e}")
             yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            # 确保后台任务被清理
+            if not research_task.done():
+                research_task.cancel()
 
     return StreamingResponse(
         generate(),

@@ -1,7 +1,7 @@
 """汇总 Agent - 整合结果生成最终回答。"""
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 from agents.base import BaseAgent, AgentConfig, state_to_dict, state_get
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
@@ -111,6 +111,92 @@ class SynthesizerAgent(BaseAgent):
         return {
             **state_dict,
             "final_answer": response.content,
+            "sources": self._extract_sources(search_results, rag_results),
+        }
+
+    async def ainvoke_stream(
+        self,
+        state: Dict[str, Any],
+        *,
+        user_input: Optional[str] = None,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """流式生成最终回答 —— 逐 token 产出状态更新。
+
+        每个 chunk 产出包含 partial_answer 的 dict，
+        最后一个 chunk 包含 final_answer 和 sources。
+
+        参数：
+            state: 当前图状态
+            user_input: 可选的用户输入
+
+        产出：
+            状态更新 dict（partial_answer 或 final_answer）
+        """
+        state_dict = state_to_dict(state)
+
+        if user_input is None:
+            user_input = state_get(state_dict, "user_input", "")
+
+        search_results = state_get(state_dict, "search_results", "")
+        rag_results = state_get(state_dict, "rag_results", "")
+        memory_context = state_get(state_dict, "memory_context", "")
+        viewed_images = state_get(state_dict, "viewed_images", {})
+        messages = state_get(state_dict, "messages", [])
+
+        # 检查是否有图片
+        has_images = bool(viewed_images)
+        extracted_images = {}
+        if not has_images and messages:
+            extracted_images = self._extract_images_from_messages(messages)
+            has_images = bool(extracted_images)
+
+        if has_images:
+            # 有图片时降级为非流式（视觉模型暂不支持流式）
+            vision_model = self._get_vision_model()
+            images_to_use = viewed_images if viewed_images else extracted_images
+            vision_messages = self._build_vision_messages(
+                user_input=user_input,
+                search_results=search_results,
+                rag_results=rag_results,
+                memory_context=memory_context,
+                viewed_images=images_to_use,
+            )
+            response = await vision_model.ainvoke(vision_messages)
+            yield {
+                **state_dict,
+                "final_answer": response.content,
+                "sources": self._extract_sources(search_results, rag_results),
+            }
+            return
+
+        # 无图片：使用流式文本模型
+        prompt = self._build_synthesis_prompt(
+            user_input=user_input,
+            search_results=search_results,
+            rag_results=rag_results,
+            memory_context=memory_context,
+        )
+
+        full_answer = ""
+        async for chunk in self.model.astream([
+            SystemMessage(content=self.get_system_prompt()),
+            HumanMessage(content=prompt),
+        ]):
+            # 兼容 LangChain 默认 astream（返回 AIMessage）和自定义 astream（返回 str）
+            if isinstance(chunk, str):
+                text = chunk
+            elif hasattr(chunk, 'content'):
+                text = chunk.content or ''
+            else:
+                text = str(chunk)
+            if text:
+                full_answer += text
+                yield {**state_dict, "partial_answer": text}
+
+        # 最后一个产出：完整答案
+        yield {
+            **state_dict,
+            "final_answer": full_answer,
             "sources": self._extract_sources(search_results, rag_results),
         }
 

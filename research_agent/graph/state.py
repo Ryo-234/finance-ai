@@ -23,6 +23,9 @@ class ResearchState:
     支持 LangChain 消息对象的完整序列化。
     """
 
+    # 线程 ID（用于流式管道和 Checkpointer）
+    thread_id: str = ""
+
     # 用户输入
     user_input: str = ""
 
@@ -105,6 +108,7 @@ class ResearchState:
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典（用于序列化）。"""
         return {
+            "thread_id": self.thread_id,
             "user_input": self.user_input,
             "tasks": self.tasks,
             "current_task_index": self.current_task_index,
@@ -117,6 +121,7 @@ class ResearchState:
     def to_serializable_dict(self) -> Dict[str, Any]:
         """转换为可序列化的字典（用于 Checkpointer）。"""
         return {
+            "thread_id": self.thread_id,
             "user_input": self.user_input,
             "tasks": self.tasks,
             "current_task_index": self.current_task_index,
@@ -137,6 +142,7 @@ class ResearchState:
         messages = messages_from_dict(messages_data) if messages_data else []
 
         return cls(
+            thread_id=data.get("thread_id", ""),
             user_input=data.get("user_input", ""),
             tasks=data.get("tasks", []),
             current_task_index=data.get("current_task_index", 0),

@@ -142,6 +142,69 @@ class MiddlewareFactory:
         return manager
 
 
+def _create_llm_summarizer():
+    """创建 LLM 驱动的摘要生成器。
+
+    返回一个 callable，接收消息列表，调用 LLM 生成简洁摘要。
+    替代 SummarizationMiddleware 默认的纯文本拼接。
+    """
+    from config.models import create_chat_model
+    from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
+    model = create_chat_model()
+
+    async def summarize(messages: list) -> str:
+        """调用 LLM 生成对话摘要。
+
+        参数：
+            messages: 待压缩的消息列表
+
+        返回：
+            摘要文本
+        """
+        # 格式化消息内容
+        parts = []
+        for msg in messages:
+            role = "用户" if isinstance(msg, HumanMessage) else (
+                "助手" if isinstance(msg, AIMessage) else "系统"
+            )
+            content = getattr(msg, "content", "") or ""
+            if isinstance(content, list):
+                content = " ".join(
+                    b.get("text", "") for b in content
+                    if isinstance(b, dict) and b.get("type") == "text"
+                )
+            if content:
+                parts.append(f"{role}: {content[:300]}")
+
+        if not parts:
+            return "（无对话内容）"
+
+        conversation = "\n\n".join(parts[-20:])  # 最多取最近 20 条
+
+        prompt = f"""请用 2-3 句话总结以下对话的关键信息和重要结论。只输出摘要文本，不要加任何前缀。
+
+对话记录：
+{conversation}
+
+摘要："""
+
+        try:
+            response = await model.ainvoke([
+                HumanMessage(content=prompt),
+            ])
+            return response.content.strip()
+        except Exception as e:
+            # LLM 调用失败时回退到简单拼接
+            return "\n".join(
+                f"[{getattr(m, 'type', 'msg')}] {str(getattr(m, 'content', ''))[:200]}"
+                for m in messages[-8:]
+            )
+
+    # 导出同步包装（中间件调用时使用 await）
+    return summarize
+
+
 def create_default_manager() -> MiddlewareManager:
     """创建默认配置的中间件管理器。
 
@@ -178,6 +241,7 @@ def create_default_manager() -> MiddlewareManager:
             "order": -5,
             "token_limit": 6000,
             "keep_messages": 10,
+            "summary_provider": _create_llm_summarizer(),  # 用 LLM 生成摘要而非纯文本截断
         },
         "context_compression": {
             "enabled": False,

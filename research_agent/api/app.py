@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routers import threads, chat, memory, models, health, channels
 from graph.research_graph import set_middleware_manager
 from middleware.factory import get_default_middleware_manager
+from middleware.auth import AuthMiddleware
 from tools.registry import get_tool_registry
 from channels.service import init_channels, shutdown_channels
 
@@ -111,6 +112,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # API Key 认证中间件（CORS 之后，路由之前）
+    app.add_middleware(AuthMiddleware)
 
     # 注册路由
     app.include_router(health.router, prefix="/api", tags=["health"])

@@ -6,6 +6,7 @@
 3. 支持 LangChain 消息序列化
 """
 
+import asyncio
 import logging
 from typing import Any, Dict, Literal, Optional, Callable
 from dataclasses import asdict
@@ -61,6 +62,10 @@ def set_checkpointer(checkpointer: Optional[BaseCheckpointSaver]) -> None:
     global _checkpointer
     _checkpointer = checkpointer
     logger.info(f"Checkpointer 已设置: {type(checkpointer).__name__ if checkpointer else 'None'}")
+
+
+# 按线程 ID 索引的流式管道（参考 DeerFlow MemoryStreamBridge 模式）
+_streams: dict[str, "asyncio.Queue"] = {}
 
 
 def set_middleware_manager(manager) -> None:
@@ -449,13 +454,30 @@ async def _synthesizer_node(state: ResearchState) -> dict:
                 state_dict["tasks"] = tasks
                 break
 
-        sr = state_dict.get("search_results", "")
-        kr = state_dict.get("knowledge_results", "")
-        result = await synthesizer.ainvoke(state_dict)
-        if isinstance(result, dict):
-            state_dict = {**state_dict, **result}
+        stream_queue = _streams.get(thread_id or "")
+
+        if stream_queue is not None and hasattr(synthesizer, "ainvoke_stream"):
+            # 真流式模式：逐 token 发送到队列
+            partial_answer = ""
+            async for partial in synthesizer.ainvoke_stream(state_dict):
+                chunk = partial.get("partial_answer")
+                if chunk:
+                    partial_answer += chunk
+                    await stream_queue.put(chunk)
+                final = partial.get("final_answer")
+                if final:
+                    partial_answer = final
+                    state_dict = {**state_dict, **partial}
+            await stream_queue.put(None)  # 流式结束信号
         else:
-            state_dict = {**state_dict, **(_state_to_dict(result))}
+            # 非流式模式（回退）
+            sr = state_dict.get("search_results", "")
+            kr = state_dict.get("knowledge_results", "")
+            result = await synthesizer.ainvoke(state_dict)
+            if isinstance(result, dict):
+                state_dict = {**state_dict, **result}
+            else:
+                state_dict = {**state_dict, **(_state_to_dict(result))}
 
         # 更新合成任务状态为已完成
         for i, t in enumerate(tasks):
@@ -469,6 +491,9 @@ async def _synthesizer_node(state: ResearchState) -> dict:
             "final_answer": f"生成回答时出错: {str(e)}",
             "error": f"Synthesizer 失败: {str(e)}",
         }}
+        # 异常时发送流式结束信号
+        if stream_queue is not None:
+            await stream_queue.put(None)
 
     state_dict = await _apply_after_node("synthesizer", state_dict, runtime)
 
@@ -493,16 +518,18 @@ async def run_research(
     user_id: Optional[str] = None,
     checkpointer: Optional[BaseCheckpointSaver] = None,
     files_metadata: Optional[list] = None,
+    stream_queue: Optional["asyncio.Queue"] = None,
 ) -> dict:
-    """运行研究流程（支持 Checkpointer 持久化）。
+    """运行研究流程（支持 Checkpointer 持久化和可选流式输出）。
 
     Args:
         user_input: 用户的研究问题
         thread_id: 线程 ID，用于持久化
-            - 如果不提供，生成随机 ID
-            - 如果提供，从上次存档继续
         user_id: 用户 ID
         checkpointer: 检查点持久化器
+        stream_queue: 异步队列，用于实时流式输出 token
+            - 如果提供，合成阶段会逐 token 向队列发送
+            - 发送 None 表示流式结束
 
     Returns:
         包含最终回答和来源的字典
@@ -537,6 +564,10 @@ async def run_research(
 
     runtime = _get_runtime_context(thread_id, user_id)
 
+    # 流式模式：按线程 ID 注册队列（参考 DeerFlow MemoryStreamBridge）
+    if stream_queue is not None and thread_id:
+        _streams[thread_id] = stream_queue
+
     # 构建配置（用于 Checkpointer）
     config = {}
     if thread_id:
@@ -552,6 +583,14 @@ async def run_research(
 
     logger.info(f"图执行完成，intent={result.get('intent')}, needs_clarification={result.get('needs_clarification')}")
 
+    # 确保流式管道发送结束信号（防止 SSE 订阅者永久阻塞）
+    sq = _streams.pop(thread_id, None) if thread_id else None
+    if sq is not None:
+        try:
+            sq.put_nowait(None)
+        except asyncio.QueueFull:
+            pass
+
     # 应用 after_agent 中间件（用于异步任务如记忆更新）
     if _middleware_manager:
         await _middleware_manager.apply_after_agent(result, runtime)
@@ -561,8 +600,12 @@ async def run_research(
 
     # 问候响应
     if intent == "greeting":
+        answer = result.get("greeting_response", "")
+        if stream_queue is not None:
+            await stream_queue.put(answer)
+            await stream_queue.put(None)
         return {
-            "answer": result.get("greeting_response", ""),
+            "answer": answer,
             "intent": "greeting",
             "sources": [],
             "tasks": [],
@@ -572,8 +615,11 @@ async def run_research(
 
     # 澄清响应
     if intent == "clarification" or result.get("needs_clarification", False):
+        answer = ""
+        if stream_queue is not None:
+            await stream_queue.put(None)
         return {
-            "answer": "",
+            "answer": answer,
             "intent": "clarification",
             "clarification": {
                 "question": result.get("clarification_question", ""),

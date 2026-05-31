@@ -1,7 +1,7 @@
 """通义千问 ChatModel 封装 - 继承 BaseChatModel。"""
 
 import os
-from typing import Any, Optional, List, Dict
+from typing import Any, AsyncGenerator, Optional, List, Dict
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, AIMessage, SystemMessage, HumanMessage
 from langchain_core.outputs import ChatResult, ChatGeneration
@@ -85,6 +85,39 @@ class ChatQWen(BaseChatModel):
         """异步调用接口。"""
         result = await self._agenerate(messages)
         return result.generations[0].message
+
+    async def astream(self, messages: List[BaseMessage], **kwargs) -> AsyncGenerator[str, None]:
+        """流式调用 —— 逐 token 生成。
+
+        参数：
+            messages: LangChain 消息列表
+
+        产出：
+            每个文本增量
+        """
+        from dashscope import Generation
+
+        qwen_messages = self._convert_to_qwen_format(messages)
+
+        responses = Generation.call(
+            model=self.model_name,
+            messages=qwen_messages,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            result_format='message',
+            api_key=self.api_key or os.getenv("DASHSCOPE_API_KEY"),
+            stream=True,
+            incremental_output=True,
+        )
+
+        for response in responses:
+            if response.status_code != 200:
+                raise ValueError(f"DashScope 流式 API 错误: {response.message}")
+            msg = response.output.choices[0].message
+            # incremental_output=True 时 content 是增量文本
+            text = getattr(msg, 'content', '') or ''
+            if text:
+                yield text
 
 
 def create_qwen_chat_model(

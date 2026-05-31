@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 const TASK_STAGES = [
   { key: 'planner', label: '规划', color: 'bg-amber-500', lightColor: 'bg-amber-100', textColor: 'text-amber-600' },
   { key: 'search', label: '搜索', color: 'bg-orange-500', lightColor: 'bg-orange-100', textColor: 'text-orange-600' },
+  { key: 'rag', label: 'RAG', color: 'bg-rose-500', lightColor: 'bg-rose-100', textColor: 'text-rose-600' },
   { key: 'knowledge', label: '知识库', color: 'bg-stone-500', lightColor: 'bg-stone-100', textColor: 'text-stone-600' },
   { key: 'synthesizer', label: '汇总', color: 'bg-yellow-500', lightColor: 'bg-yellow-100', textColor: 'text-yellow-600' },
 ]

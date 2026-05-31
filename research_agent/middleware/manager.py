@@ -209,7 +209,7 @@ class MiddlewareManager:
                     if isinstance(middleware_result, MiddlewareResult):
                         result = result.merge(middleware_result)
                     else:
-                        result = result.merge(MiddlewareResult(updated=middleware_result))
+                        result = result.merge(MiddlewareResult(updates=middleware_result))
             except Exception as e:
                 logger.exception(f"中间件 {middleware.name} after_model 执行失败: {e}")
                 result = result.merge(
@@ -248,7 +248,7 @@ class MiddlewareManager:
                     if isinstance(middleware_result, MiddlewareResult):
                         result = result.merge(middleware_result)
                     else:
-                        result = result.merge(MiddlewareResult(updated=middleware_result))
+                        result = result.merge(MiddlewareResult(updates=middleware_result))
             except Exception as e:
                 logger.exception(f"中间件 {middleware.name} after_agent 执行失败: {e}")
 
@@ -282,7 +282,7 @@ class MiddlewareManager:
                     if isinstance(middleware_result, MiddlewareResult):
                         result = result.merge(middleware_result)
                     else:
-                        result = result.merge(MiddlewareResult(updated=middleware_result))
+                        result = result.merge(MiddlewareResult(updates=middleware_result))
             except Exception as e:
                 logger.exception(f"中间件 {middleware.name} before_tool 执行失败: {e}")
 
@@ -318,7 +318,7 @@ class MiddlewareManager:
                     if isinstance(middleware_result, MiddlewareResult):
                         result = result.merge(middleware_result)
                     else:
-                        result = result.merge(MiddlewareResult(updated=middleware_result))
+                        result = result.merge(MiddlewareResult(updates=middleware_result))
             except Exception as e:
                 logger.exception(f"中间件 {middleware.name} after_tool 执行失败: {e}")
 

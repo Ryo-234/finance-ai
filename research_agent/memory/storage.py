@@ -135,6 +135,15 @@ class FileMemoryStorage(MemoryStorage):
             logger.error("保存 memory 文件失败：%s", e)
             return False
 
+    # 兼容别名：API 路由使用 load_memory/save_memory 方法名
+    def load_memory(self, user_id: str | None = None, agent_name: str | None = None) -> dict[str, Any]:
+        """加载记忆数据（load 的别名，兼容 API 路由调用）。"""
+        return self.load(user_id=user_id)
+
+    def save_memory(self, memory_data: dict[str, Any], user_id: str | None = None, agent_name: str | None = None) -> bool:
+        """保存记忆数据（save 的别名，兼容 API 路由调用）。"""
+        return self.save(memory_data, user_id=user_id)
+
 
 # 全局单例
 _storage_instance: Optional[MemoryStorage] = None

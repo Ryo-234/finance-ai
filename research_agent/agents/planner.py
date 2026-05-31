@@ -208,15 +208,17 @@ class PlannerAgent(BaseAgent):
             logger.warning(f"意图分析失败: {e}")
             state_dict["intent_analysis_error"] = str(e)
 
-        # 正常任务规划
+        # 正常任务规划——使用独立的简短提示词，不受意图分析上下文干扰
+        task_prompt = self._build_task_planning_prompt(user_input)
         try:
-            raw_response = await self.model.ainvoke(context_prompt)
+            raw_response = await self.model.ainvoke(task_prompt)
             parser = self._get_task_parser()
             response = parser.invoke(raw_response)
             tasks = self._parse_structured_output(response, user_input)
             planner_output = response.get("reasoning") or f"需要搜索: {response.get('needs_search')}, 需要RAG: {response.get('needs_rag')}"
         except Exception as e:
             # 结构化输出失败时降级到简单解析
+            logger.warning("任务规划失败，降级解析: %s", e)
             tasks = self._fallback_parse(user_input)
             planner_output = f"降级解析，原因: {str(e)}"
 
@@ -267,11 +269,49 @@ class PlannerAgent(BaseAgent):
 - 有多种可行方案需要选择
 - 涉及危险操作
 
+**4. 搜索必要性判断（最高优先级）：**
+以下情况必须创建搜索任务（needs_search=true）：
+- 包含时效性关键词：最新、最近、今天、现在、当前、2026、今年
+- 涉及价格、促销、打折、优惠、活动、发布、更新、版本
+- 任何你不确定答案或答案可能随时间变化的问题
+- 缺省原则：如果不确定是否需要搜索，就设置为 needs_search=true
+
 请返回结构化的分析结果。"""
 
         return [
             SystemMessage(content=self.get_system_prompt()),
             HumanMessage(content=analysis_prompt),
+        ]
+
+    def _build_task_planning_prompt(self, user_input: str) -> list:
+        """构建任务规划提示词——专门用于判断是否需要搜索和 RAG。
+
+        此提示词独立于意图分析，简短聚焦，确保 LLM 不被之前的意图分析输出干扰。
+        """
+        task_prompt = f"""请分析以下用户问题，判断是否需要执行搜索和 RAG 检索。
+
+## 用户问题
+{user_input}
+
+## 判断规则
+
+**需要搜索（needs_search=true）的情况：**
+- 问题涉及最新信息（最新、最近、今天、现在、当前、今年、2026）
+- 问题涉及价格/促销（打折、优惠、多少钱、费用、价格）
+- 问题涉及产品发布/更新/版本
+- 问题涉及新闻事件/时事热点
+- 任何你不确定答案或答案会随时间变化的问题
+- **默认原则：如果不确定，就设为 true**
+
+**需要 RAG（needs_rag=true）的情况：**
+- 问题涉及本地上传的文档内容
+- 问题可以用本地知识库回答
+
+请返回 JSON，包含 needs_search、search_description、needs_rag、rag_description、reasoning 字段。"""
+
+        return [
+            SystemMessage(content=self.get_system_prompt()),
+            HumanMessage(content=task_prompt),
         ]
 
     def _summarize_conversation_history(self, messages: list) -> str:

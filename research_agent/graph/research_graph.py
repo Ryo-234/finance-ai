@@ -179,6 +179,7 @@ def _route_after_planner(state: ResearchState) -> Literal["greeting", "clarifica
     """
     intent = state.intent if hasattr(state, "intent") else "task"
 
+
     # 检查是否需要澄清
     if hasattr(state, "needs_clarification") and state.needs_clarification:
         return "clarification"
@@ -317,15 +318,19 @@ async def _search_node(state: ResearchState) -> dict:
     try:
         if hasattr(state, 'get_next_task'):
             task = state.get_next_task()
+            all_tasks = state.tasks if hasattr(state, 'tasks') else []
         else:
-            tasks = state_dict.get("tasks", [])
+            all_tasks = state_dict.get("tasks", [])
             current_index = state_dict.get("current_task_index", 0)
-            task = tasks[current_index] if current_index < len(tasks) else None
+            task = all_tasks[current_index] if current_index < len(all_tasks) else None
+
 
         if task and task.get("task_type") == "search":
             result = await search_agent.ainvoke(state_dict, query=task.get("description"))
             if isinstance(result, dict):
                 state_dict = {**state_dict, **result}
+                sr = state_dict.get("search_results", "")
+        else:
     except Exception as e:
         logger.error(f"Search 执行失败: {e}")
         state_dict = {**state_dict, **{
@@ -414,6 +419,8 @@ async def _synthesizer_node(state: ResearchState) -> dict:
     synthesizer = registry.get_agent("synthesizer")
 
     try:
+        sr = state_dict.get("search_results", "")
+        kr = state_dict.get("knowledge_results", "")
         result = await synthesizer.ainvoke(state_dict)
         if isinstance(result, dict):
             state_dict = {**state_dict, **result}

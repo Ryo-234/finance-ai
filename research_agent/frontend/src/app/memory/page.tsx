@@ -35,7 +35,7 @@ export default function 记忆管理页() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#faf8f5' }}>
+    <div className="min-h-screen flex flex-col" style={{ background: '#faf8f5' }}>
       <div className="sticky top-0 z-20 backdrop-blur-sm" style={{ background: 'rgba(250,248,245,0.9)', borderBottom: '1px solid rgba(226,232,240,0.6)' }}>
         <div className="max-w-3xl mx-auto px-6 h-14 flex items-center gap-4">
           <button onClick={() => 路由.push('/chat')} className="p-1.5 -ml-1.5 rounded-lg transition-colors cursor-pointer" style={{ color: '#64748b' }}>
@@ -50,7 +50,7 @@ export default function 记忆管理页() {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto p-6">
+      <div className="max-w-3xl mx-auto p-6 flex-1 flex items-center justify-center">
         {事实列表.length === 0 ? (
           <EmptyState
             icon={<Database className="w-10 h-10" />}

@@ -504,7 +504,7 @@ export default function HomePage() {
                           borderRadius: message.role === 'human' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                         }}
                       >
-                        <p className="whitespace-pre-wrap leading-relaxed">
+                        <p className="whitespace-pre-wrap break-all leading-relaxed">
                           {message.content}
                           {currentThread.status === 'streaming' && index === currentThread.messages.length - 1 && message.role === 'ai' && (
                             <span

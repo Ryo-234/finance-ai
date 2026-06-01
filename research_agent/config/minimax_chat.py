@@ -22,6 +22,7 @@ class ChatMiniMax(BaseChatModel):
     api_key: Optional[str] = None
     temperature: float = 0.7
     max_tokens: int = 4096
+    stream_chunk_size: int = 30  # 累积多少字符再 yield 一次（减小 SSE 事件数量）
 
     @property
     def _llm_type(self) -> str:
@@ -154,22 +155,34 @@ class ChatMiniMax(BaseChatModel):
                     raise ValueError(f"MiniMax 流式 API 错误: {response.status} - {text}")
 
                 try:
-                    # 逐行读取 SSE 事件
+                    # 逐行读取 SSE 事件，按 stream_chunk_size 累积后批量 yield
+                    buffer = ""
+                    chunk_size = getattr(self, "stream_chunk_size", 30)
                     async for raw_line in response.content:
                         line = raw_line.decode("utf-8").strip()
                         if not line or not line.startswith("data: "):
                             continue
                         data_str = line[6:]
                         if data_str == "[DONE]":
+                            if buffer:
+                                yield buffer
+                                buffer = ""
                             break
                         try:
                             data = json.loads(data_str)
                             delta = data.get("choices", [{}])[0].get("delta", {})
                             content = delta.get("content", "")
                             if content:
-                                yield content
+                                buffer += content
+                                # 累积到 chunk_size 个字符再 yield（减少事件数）
+                                if len(buffer) >= chunk_size:
+                                    yield buffer
+                                    buffer = ""
                         except json.JSONDecodeError:
                             continue
+                    # 末尾剩余
+                    if buffer:
+                        yield buffer
                 except Exception as e:
                     logger.warning("MiniMax 流式读取中断: %s", e)
 

@@ -109,32 +109,92 @@ class ReportSynthesizerAgent(BaseAgent):
             )
 
             # 并发启动所有章节生成（asyncio.create_task 立即返回）
-            async def _gen_one(section):
+            # 每个章节内部用 model.astream 真正 token 流式
+            # 简化设计：每个章节的"内部 token 流"被 collect 到 asyncio.Queue，
+            # 上层用 fair scheduler 公平轮询所有章节的 queue，谁有 token 就 yield
+            chunk_buffer_size = 30  # 每个章节至少累积 30 字符再 yield（减少 SSE 事件数）
+
+            section_queues = [asyncio.Queue() for _ in sections]
+            section_completed = [False] * len(sections)
+
+            async def _gen_one_streaming(idx, section):
+                """单章节流式生成：边收 LLM token 边推送到 queue。"""
+                from langchain_core.messages import HumanMessage, SystemMessage
                 title = section.get("title", "")
                 try:
-                    content = await self._generate_section(
-                        topic=user_input,
-                        section_title=title,
-                        section_prompt=section.get("prompt", ""),
-                        knowledge=knowledge_summary,
-                        word_count=section.get("word_count", 300),
-                    )
-                    return title, content, None
+                    content = ""
+                    prompt = f"""请撰写报告的"{title}"章节。
+
+## 研究课题
+{user_input}
+
+## 章节要求
+{section.get('prompt', '')}
+
+## 可用知识材料
+{knowledge_summary[:2000]}
+
+## 格式要求
+- 字数：约 {section.get('word_count', 300)} 字
+- 使用 Markdown 格式
+- 不要给出投资建议
+"""
+                    buffer = ""
+                    async for chunk in self.model.astream([
+                        SystemMessage(content=self.config.system_prompt),
+                        HumanMessage(content=prompt),
+                    ]):
+                        # 兼容 str 和 AIMessage 两种 astream 返回类型
+                        text = chunk if isinstance(chunk, str) else (chunk.content or "")
+                        if not text:
+                            continue
+                        content += text
+                        buffer += text
+                        # 累积到 chunk_buffer_size 再 push
+                        if len(buffer) >= chunk_buffer_size:
+                            await section_queues[idx].put(("chunk", title, buffer))
+                            buffer = ""
+                    if buffer:
+                        await section_queues[idx].put(("chunk", title, buffer))
+                    # 整章节完成，发送最终内容（包含标题 + 完整内容）
+                    await section_queues[idx].put(("section", title, content))
+                    section_completed[idx] = True
                 except Exception as e:
-                    return title, f"> 章节生成失败: {str(e)[:200]}", e
+                    logger.warning(f"章节 [{title}] 流式生成失败: {e}")
+                    await section_queues[idx].put((
+                        "section", title, f"> 章节生成失败: {str(e)[:200]}"
+                    ))
+                    section_completed[idx] = True
 
-            tasks = [asyncio.create_task(_gen_one(s)) for s in sections]
+            # 启动所有章节并发任务
+            tasks = [asyncio.create_task(_gen_one_streaming(i, s)) for i, s in enumerate(sections)]
 
-            # 按完成顺序 yield（谁先完成谁先输出，用户感知更快）
-            full_sections = {}
-            for coro in asyncio.as_completed(tasks):
-                title, content, err = await coro
-                full_sections[title] = content
-                if err:
-                    logger.warning(f"章节 [{title}] 异常: {err}")
-                yield {"partial_answer": f"\n\n## {title}\n\n{content}"}
+            # 公平调度：轮询所有 queue，优先发送 token chunk
+            full_sections = {}  # 收集每个章节的完整内容
+            finished_count = 0
+            while finished_count < len(sections):
+                any_data = False
+                for i, q in enumerate(section_queues):
+                    if section_completed[i] and q.empty():
+                        continue
+                    try:
+                        item = await asyncio.wait_for(q.get(), timeout=0.05)
+                        any_data = True
+                    except asyncio.TimeoutError:
+                        continue
+                    kind, title, payload = item
+                    if kind == "chunk":
+                        # 实时 token 块，立即推送给前端（用户看到文字在流）
+                        yield {"partial_answer": payload}
+                    else:  # section
+                        # 整章节完成，记录完整内容
+                        full_sections[title] = payload
+                        finished_count += 1
 
-            # 按原顺序拼接
+            # 等待所有后台任务结束
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+            # 按原顺序拼接完整报告（用于注入合规和保存到数据库）
             full_content = ""
             for section in sections:
                 full_content += f"\n\n## {section.get('title', '')}\n\n{full_sections.get(section.get('title', ''), '')}"

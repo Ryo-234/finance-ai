@@ -352,10 +352,15 @@ async def chat_stream(request: ChatRequest, fastapi_request: Request):
                     # None 表示流式结束
                     break
 
-                if isinstance(item, tuple) and item[0] == "error":
-                    # 错误信号
+                # 错误信号 (("error", message))
+                if isinstance(item, tuple) and len(item) == 2 and item[0] == "error":
                     yield f"event: error\ndata: {json.dumps({'error': item[1]})}\n\n"
                     return
+
+                # 阶段事件 (("stage", {stage, status, message}))
+                if isinstance(item, tuple) and len(item) == 2 and item[0] == "stage":
+                    yield f"event: stage\ndata: {json.dumps(item[1])}\n\n"
+                    continue
 
                 # 正常 token
                 chunk = item

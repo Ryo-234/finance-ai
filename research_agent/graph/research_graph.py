@@ -68,6 +68,24 @@ def set_checkpointer(checkpointer: Optional[BaseCheckpointSaver]) -> None:
 _streams: dict[str, "asyncio.Queue"] = {}
 
 
+async def _emit_stage(thread_id: str, stage: str, status: str, message: str = ""):
+    """向流式管道推送阶段进度事件（让前端能看到 Agent 节点的实时状态）。
+
+    参数：
+        stage: 阶段名（planner / finance_search / finance_knowledge / report_synthesizer）
+        status: 状态（running / completed / failed）
+        message: 可选的提示文本
+    """
+    sq = _streams.get(thread_id or "")
+    if sq is None:
+        return
+    payload = {"stage": stage, "status": status, "message": message}
+    try:
+        await sq.put(("stage", payload))
+    except Exception:
+        pass
+
+
 def set_middleware_manager(manager) -> None:
     """设置中间件管理器。"""
     global _middleware_manager
@@ -277,6 +295,9 @@ async def _planner_node(state: ResearchState) -> dict:
     thread_id = state_dict.get("thread_id")
     runtime = _get_runtime_context(thread_id)
 
+    # 流式：阶段开始提示
+    await _emit_stage(thread_id, "planner", "running", "正在分析意图和规划任务...")
+
     state_dict = await _apply_before_node("planner", state_dict, runtime)
 
     from tools.registry import get_tool_registry
@@ -302,7 +323,7 @@ async def _planner_node(state: ResearchState) -> dict:
         }}
 
     state_dict = await _apply_after_node("planner", state_dict, runtime)
-
+    await _emit_stage(thread_id, "planner", "completed", "意图分析完成")
     return state_dict
 
 
@@ -717,6 +738,9 @@ async def _finance_search_node(state: ResearchState) -> dict:
     thread_id = state_dict.get("thread_id")
     runtime = _get_runtime_context(thread_id)
 
+    # 流式：阶段开始提示（让前端立刻看到"正在搜索数据"）
+    await _emit_stage(thread_id, "finance_search", "running", "正在从金融数据源获取数据...")
+
     state_dict = await _apply_before_node("finance_search", state_dict, runtime)
 
     try:
@@ -731,29 +755,54 @@ async def _finance_search_node(state: ResearchState) -> dict:
         state_dict["error"] = str(e)
 
     state_dict = await _apply_after_node("finance_search", state_dict, runtime)
+    await _emit_stage(thread_id, "finance_search", "completed", "数据源获取完成")
     return state_dict
 
 
 async def _finance_knowledge_node(state: ResearchState) -> dict:
-    """金融知识整合节点 —— 按报告模板组织数据。"""
+    """金融知识整合节点 —— 按报告模板组织数据。
+
+    真正流式：调用 ainvoke_stream，每个 LLM token 立即推给 stream_queue。
+    让前端在 30-40 秒大块延迟中也能看到实时输出。
+    """
     state_dict = _state_to_dict(state)
     thread_id = state_dict.get("thread_id")
     runtime = _get_runtime_context(thread_id)
+
+    # 流式：阶段开始提示
+    await _emit_stage(thread_id, "finance_knowledge", "running", "正在按报告模板组织数据...")
 
     state_dict = await _apply_before_node("finance_knowledge", state_dict, runtime)
 
     try:
         from agents.finance_knowledge_agent import FinanceKnowledgeAgent
         agent = FinanceKnowledgeAgent()
-        result = await agent.ainvoke(state_dict)
-        if isinstance(result, dict):
-            state_dict = {**state_dict, **result}
+        stream_queue = _streams.get(thread_id or "")
+
+        if stream_queue is not None and hasattr(agent, "ainvoke_stream"):
+            # 流式模式：逐 token 推送
+            async for partial in agent.ainvoke_stream(state_dict):
+                chunk = partial.get("partial_answer", "")
+                if chunk:
+                    await stream_queue.put(chunk)
+                if partial.get("knowledge_done"):
+                    state_dict = {
+                        **state_dict,
+                        "knowledge_results": partial.get("knowledge_results", state_dict.get("knowledge_results", "")),
+                    }
+                    break
+        else:
+            # 非流式回退
+            result = await agent.ainvoke(state_dict)
+            if isinstance(result, dict):
+                state_dict = {**state_dict, **result}
     except Exception as e:
         logger.error(f"金融知识整合失败: {e}")
         state_dict["knowledge_results"] = state_dict.get("search_results", "")
         state_dict["error"] = str(e)
 
     state_dict = await _apply_after_node("finance_knowledge", state_dict, runtime)
+    await _emit_stage(thread_id, "finance_knowledge", "completed", "知识整理完成，开始生成报告")
     return state_dict
 
 
@@ -762,6 +811,9 @@ async def _report_synthesizer_node(state: ResearchState) -> dict:
     state_dict = _state_to_dict(state)
     thread_id = state_dict.get("thread_id")
     runtime = _get_runtime_context(thread_id)
+
+    # 流式：阶段开始提示
+    await _emit_stage(thread_id, "report_synthesizer", "running", "正在生成报告章节...")
 
     state_dict = await _apply_before_node("report_synthesizer", state_dict, runtime)
 
@@ -793,6 +845,7 @@ async def _report_synthesizer_node(state: ResearchState) -> dict:
             await stream_queue.put(None)
 
     state_dict = await _apply_after_node("report_synthesizer", state_dict, runtime)
+    await _emit_stage(thread_id, "report_synthesizer", "completed", "报告生成完成")
     return state_dict
 
 

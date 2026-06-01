@@ -173,14 +173,30 @@ class PlannerAgent(BaseAgent):
         # 构建完整的上下文提示
         context_prompt = self._build_context_prompt(user_input, messages)
 
+        # 启发式规则：包含证券代码（6位数字）或公司名时，强制 task 模式
+        # 避免 LLM 把"五粮液 000858"误判为 clarification
+        import re
+        has_stock_code = bool(re.search(r'\b\d{6}\b', user_input))
+        # 常见上市公司关键词（A股典型公司名都是 2-4 字汉字）
+        has_company_keyword = any(
+            kw in user_input for kw in ['股份', '集团', '公司', '银行', '证券', '保险', '科技', '医药']
+        )
+        force_task_mode = has_stock_code or has_company_keyword
+
         # 调用 LLM 进行意图分析和任务规划
         try:
             # 使用 JsonOutputParser 解析
             raw_response = await self.model.ainvoke(context_prompt)
             parser = self._get_intent_parser()
             response = parser.invoke(raw_response)
-            logger.info(f"意图分析结果: intent={response.get('intent')}, reasoning={response.get('reasoning', '')}")
+            logger.info(f"意图分析结果: intent={response.get('intent')}, reasoning={response.get('reasoning', '')[:100]}")
             state_dict["intent"] = response.get("intent", "task")
+
+            # 启发式覆盖：如果包含证券代码/公司关键词，强制 task 模式（忽略 LLM 误判的 clarification）
+            if force_task_mode and state_dict["intent"] == "clarification":
+                logger.info(f"启发式规则覆盖：检测到证券代码/公司关键词，强制 task 模式")
+                state_dict["intent"] = "task"
+                response["intent"] = "task"
 
             # 如果需要澄清，返回澄清状态
             if response.get("needs_clarification") or response.get("intent") == IntentType.CLARIFICATION:

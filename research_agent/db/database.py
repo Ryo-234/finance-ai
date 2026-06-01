@@ -51,10 +51,25 @@ class DatabaseManager:
 
     def create_tables(self):
         """创建所有表（如果不存在）。"""
-        from .models import Base
+        from .models import Base, User
 
         Base.metadata.create_all(bind=self.engine)
         logger.info("数据库表已就绪")
+
+        # 初始化占位用户（未登录访客的默认归属）
+        with self.get_session() as session:
+            default_user = session.query(User).filter(User.id == "default_user").first()
+            if not default_user:
+                default_user = User(
+                    id="default_user",
+                    email="guest@finance-ai.local",
+                    hashed_password="!guest-no-login!",
+                    display_name="访客",
+                    plan_type="free",
+                )
+                session.add(default_user)
+                session.commit()
+                logger.info("已创建默认访客用户")
 
     def get_session(self) -> Session:
         """获取一个新的数据库会话。"""

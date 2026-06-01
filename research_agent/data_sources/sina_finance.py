@@ -1,5 +1,6 @@
 """新浪财经数据源 —— 新闻、行情、基本面。"""
 
+import asyncio
 import logging
 from typing import List
 import aiohttp

@@ -197,6 +197,9 @@ def _route_after_planner(state: ResearchState) -> Literal["greeting", "clarifica
 def compile_graph(checkpointer: Optional[BaseCheckpointSaver] = None):
     """编译研究图并可选地添加检查点。
 
+    4 节点精简版（已移除 RAG 节点，与 create_research_graph 一致）：
+    planner → search → knowledge → synthesizer
+
     Args:
         checkpointer: 检查点持久化器
             - None: 不使用持久化
@@ -211,7 +214,6 @@ def compile_graph(checkpointer: Optional[BaseCheckpointSaver] = None):
 
     builder.add_node("planner", _planner_node)
     builder.add_node("search", _search_node)
-    builder.add_node("rag", _rag_node)
     builder.add_node("knowledge", _knowledge_node)
     builder.add_node("synthesizer", _synthesizer_node)
 
@@ -228,8 +230,7 @@ def compile_graph(checkpointer: Optional[BaseCheckpointSaver] = None):
         }
     )
 
-    builder.add_edge("search", "rag")
-    builder.add_edge("rag", "knowledge")
+    builder.add_edge("search", "knowledge")
     builder.add_edge("knowledge", "synthesizer")
     builder.add_edge("synthesizer", END)
 
@@ -357,29 +358,7 @@ async def _search_node(state: ResearchState) -> dict:
     return state_dict
 
 
-async def _rag_node(state: ResearchState) -> dict:
-    """RAG 节点 - 从本地向量知识库检索相关文档。"""
-    state_dict = _state_to_dict(state)
-
-    thread_id = state_dict.get("thread_id")
-    runtime = _get_runtime_context(thread_id)
-
-    state_dict = await _apply_before_node("rag", state_dict, runtime)
-
-    from tools.registry import get_tool_registry
-    registry = get_tool_registry()
-    rag_agent = registry.get_agent("rag")
-
-    try:
-        result = await rag_agent.ainvoke(state_dict)
-        if isinstance(result, dict):
-            state_dict = {**state_dict, **result}
-    except Exception as e:
-        logger.error("RAG 执行失败: %s", e)
-        state_dict = {**state_dict, "rag_results": [], "error": f"RAG 失败: {str(e)}"}
-
-    state_dict = await _apply_after_node("rag", state_dict, runtime)
-    return state_dict
+# RAG 节点已移除（4 节点精简版）
 
 
 async def _knowledge_node(state: ResearchState) -> dict:

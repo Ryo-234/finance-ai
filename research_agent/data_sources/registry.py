@@ -1,5 +1,6 @@
 """数据源注册表 —— 管理和调度多个金融数据源。"""
 
+import asyncio
 import logging
 from typing import Dict, List, Optional
 
@@ -72,9 +73,16 @@ class DataSourceRegistry:
         for name in source_names:
             source = self._sources[name]
             try:
-                docs = await source.search(query, max_results=max_per_source)
+                # 每个数据源 10s 硬超时（防止单个数据源拖慢整个流程）
+                docs = await asyncio.wait_for(
+                    source.search(query, max_results=max_per_source),
+                    timeout=10.0,
+                )
                 results[name] = docs
                 logger.info(f"数据源 [{name}] 返回 {len(docs)} 条结果，查询: {query[:50]}")
+            except asyncio.TimeoutError:
+                logger.warning(f"数据源 [{name}] 10s 超时，跳过")
+                results[name] = []
             except Exception as e:
                 logger.warning(f"数据源 [{name}] 查询失败: {e}")
                 results[name] = []

@@ -121,6 +121,7 @@ class APIClient {
           channel: params.channel || 'api',
           chat_id: params.chat_id || 'anonymous',
           stream: true,
+          report_type: params.report_type,
         }),
       })
 

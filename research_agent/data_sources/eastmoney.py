@@ -1,5 +1,6 @@
 """东方财富数据源 —— 行情、公告、研报、财务数据。"""
 
+import asyncio
 import logging
 from typing import List
 import aiohttp
@@ -37,16 +38,26 @@ class EastMoneyDataSource(BaseDataSource):
         """搜索东方财富数据。"""
         docs = []
 
-        # 并行获取行情和新闻
+        # 并行获取行情和新闻（带超时保护）
         try:
-            quote_docs = await self._search_quotes(query, max_results // 2)
+            quote_docs = await asyncio.wait_for(
+                self._search_quotes(query, max_results // 2),
+                timeout=8.0,  # 8秒硬超时
+            )
             docs.extend(quote_docs)
+        except asyncio.TimeoutError:
+            logger.warning("东方财富行情查询超时（8s）")
         except Exception as e:
             logger.warning(f"东方财富行情查询失败: {e}")
 
         try:
-            news_docs = await self._search_news(query, max_results // 2)
+            news_docs = await asyncio.wait_for(
+                self._search_news(query, max_results // 2),
+                timeout=8.0,
+            )
             docs.extend(news_docs)
+        except asyncio.TimeoutError:
+            logger.warning("东方财富新闻查询超时（8s）")
         except Exception as e:
             logger.warning(f"东方财富新闻查询失败: {e}")
 

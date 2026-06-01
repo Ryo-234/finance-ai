@@ -390,7 +390,7 @@ export default function HomePage() {
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
             title="退出登录"
           >
-            退出
+            退出登录
           </button>
         </div>
         {currentThread ? (

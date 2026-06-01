@@ -269,6 +269,11 @@ async def _do_chat(
         if answer:
             _save_message(thread_id, "ai", answer)
 
+        # 同步标题到线程元数据
+        title = result.get("title", "")
+        if title and thread_id in _threads_meta:
+            _threads_meta[thread_id].title = title
+
         return result
 
     except Exception as e:
@@ -353,8 +358,13 @@ async def chat_stream(request: ChatRequest):
             if answer:
                 _save_message(request.thread_id, "ai", answer)
 
+            # 同步标题到线程元数据
+            title = result.get("title", "")
+            if title and request.thread_id in _threads_meta:
+                _threads_meta[request.thread_id].title = title
+
             # 发送完成信号（含完整 answer、sources、tasks、title）
-            yield f"event: done\ndata: {json.dumps({'answer': answer, 'sources': result.get('sources', []), 'tasks': result.get('tasks', []), 'title': result.get('title', '')})}\n\n"
+            yield f"event: done\ndata: {json.dumps({'answer': answer, 'sources': result.get('sources', []), 'tasks': result.get('tasks', []), 'title': title})}\n\n"
 
         except Exception as e:
             logger.exception(f"流式聊天失败: {e}")

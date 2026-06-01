@@ -41,6 +41,7 @@ class ThreadInfo(BaseModel):
     """线程信息。"""
 
     thread_id: str = Field(..., description="线程 ID")
+    title: str = Field(default="", description="会话标题")
     channel: str = Field(default="api", description="IM 渠道")
     chat_id: str = Field(default="anonymous", description="渠道内用户 ID")
     user_id: str = Field(default="default", description="系统用户 ID")
@@ -54,6 +55,7 @@ class ThreadResponse(BaseModel):
     """线程响应。"""
 
     thread_id: str
+    title: str = ""
     channel: str
     chat_id: str
     created_at: float

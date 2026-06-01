@@ -133,6 +133,7 @@ class APIClient {
       const decoder = new TextDecoder()
       let buffer = ''
       let chunkCount = 0
+      let totalChars = 0
 
       while (true) {
         const { done, value } = await reader.read()
@@ -144,14 +145,12 @@ class APIClient {
         // 统一换行符后按 SSE 标准双换行分割事件
         const normalized = buffer.replace(/\r\n/g, '\n')
         const events = normalized.split('\n\n')
-        // 最后一个可能不完整，保留在 buffer
         buffer = events.pop() || ''
 
         for (const raw of events) {
           const trimmed = raw.trim()
           if (!trimmed) continue
 
-          // 解析 event: 和 data: 行（可能顺序不同）
           let eventType = ''
           let dataStr = ''
           for (const line of trimmed.split('\n')) {
@@ -168,15 +167,18 @@ class APIClient {
             const data = JSON.parse(dataStr)
             if (eventType === 'chunk' && data.text) {
               chunkCount++
+              totalChars += data.text.length
               onChunk(data.text)
             } else if (eventType === 'done') {
-              console.log(`SSE 流式完成: ${chunkCount} 个 chunk, title=${data.title}`)
+              console.log(
+                `SSE 完成: ${chunkCount} chunk, ${totalChars} 字, title="${data.title}", answer_len=${(data.answer || '').length}`
+              )
               onDone(data)
             } else if (eventType === 'error') {
               onError(new Error(data.error))
             }
           } catch {
-            // JSON 解析失败，跳过此事件
+            // 跳过
           }
         }
 

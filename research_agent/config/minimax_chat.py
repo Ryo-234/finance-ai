@@ -1,11 +1,14 @@
 """MiniMax ChatModel 封装 - Token Plan M2.7 模型。"""
 
+import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatResult, ChatGeneration
 from langchain_core.callbacks import CallbackManagerForLLMRun
+
+logger = logging.getLogger(__name__)
 
 
 class ChatMiniMax(BaseChatModel):
@@ -139,7 +142,7 @@ class ChatMiniMax(BaseChatModel):
             "Content-Type": "application/json",
         }
 
-        timeout = aiohttp.ClientTimeout(total=300, sock_read=120)
+        timeout = aiohttp.ClientTimeout(total=600, sock_read=180, connect=30)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 "https://api.minimax.chat/v1/chat/completions",
@@ -150,22 +153,25 @@ class ChatMiniMax(BaseChatModel):
                     text = await response.text()
                     raise ValueError(f"MiniMax 流式 API 错误: {response.status} - {text}")
 
-                # 逐行读取 SSE 事件
-                async for line in response.content:
-                    line = line.decode("utf-8").strip()
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]  # 去掉 "data: " 前缀
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        data = json.loads(data_str)
-                        delta = data.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
-                    except json.JSONDecodeError:
-                        continue
+                try:
+                    # 逐行读取 SSE 事件
+                    async for raw_line in response.content:
+                        line = raw_line.decode("utf-8").strip()
+                        if not line or not line.startswith("data: "):
+                            continue
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(data_str)
+                            delta = data.get("choices", [{}])[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                yield content
+                        except json.JSONDecodeError:
+                            continue
+                except Exception as e:
+                    logger.warning("MiniMax 流式读取中断: %s", e)
 
 
 def create_minimax_chat_model(

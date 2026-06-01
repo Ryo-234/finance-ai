@@ -337,6 +337,62 @@ export default function HomePage() {
 
       {/* 主区域 */}
       <main className="flex-1 flex flex-col relative">
+        {/* 始终可见的导航栏 */}
+        <div
+          className="h-14 flex items-center px-6 justify-between border-b"
+          style={{ background: 'rgba(255,255,255,0.9)', borderColor: 'rgba(226,232,240,0.8)', backdropFilter: 'blur(8px)' }}
+        >
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              style={{
+                background: 'rgba(217,119,6,0.08)',
+                color: '#92400e',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(217,119,6,0.15)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(217,119,6,0.08)'}
+              title="返回仪表板"
+            >
+              仪表板
+            </Link>
+            <Link
+              href="/reports"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              style={{ color: '#57534e' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.04)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              title="报告中心"
+            >
+              报告中心
+            </Link>
+            <Link
+              href="/"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              style={{ color: '#78716c' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.04)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              title="返回首页"
+            >
+              首页
+            </Link>
+          </div>
+          <button
+            onClick={() => {
+              if (typeof window !== 'undefined' && localStorage.getItem('auth_token')) {
+                localStorage.removeItem('auth_token')
+              }
+              window.location.href = '/'
+            }}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            style={{ color: '#b91c1c' }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(220,38,38,0.08)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            title="退出登录"
+          >
+            退出
+          </button>
+        </div>
         {currentThread ? (
           <>
             {/* 顶部状态栏 */}
@@ -451,26 +507,6 @@ export default function HomePage() {
                 <Link href="/settings" className="p-2 rounded-lg transition-colors cursor-pointer" style={{ color: '#94a3b8' }} title="设置">
                   <Settings className="w-4 h-4" />
                 </Link>
-                <span className="w-px h-4 bg-stone-300 mx-1" />
-                <Link href="/dashboard" className="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer" style={{ color: '#92400e', background: 'rgba(217,119,6,0.08)' }} title="返回仪表板">
-                  仪表板
-                </Link>
-                <Link href="/reports" className="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer hover:bg-stone-100" style={{ color: '#57534e' }} title="报告中心">
-                  报告中心
-                </Link>
-                <button
-                  onClick={() => {
-                    if (typeof window !== 'undefined' && localStorage.getItem('auth_token')) {
-                      localStorage.removeItem('auth_token')
-                    }
-                    window.location.href = '/'
-                  }}
-                  className="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer hover:bg-red-50"
-                  style={{ color: '#b91c1c' }}
-                  title="退出登录"
-                >
-                  退出
-                </button>
                 <button
                   onClick={() => selectThread(undefined)}
                   className="p-2 rounded-lg transition-colors cursor-pointer"

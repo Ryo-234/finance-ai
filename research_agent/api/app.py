@@ -58,6 +58,19 @@ async def lifespan(app: FastAPI):
     registry = get_tool_registry()
     logger.info(f"工具注册表已初始化: {len(registry.list_tools())} 个工具")
 
+    # 初始化 MCP 工具
+    try:
+        from mcp_integration.tools import get_mcp_tools
+        from config.mcp import get_mcp_config
+        mcp_config = get_mcp_config()
+        if mcp_config.enabled:
+            mcp_tools = await get_mcp_tools(mcp_config)
+            if mcp_tools:
+                registry.set_mcp_tools(mcp_tools)
+                logger.info(f"MCP 工具已加载: {len(mcp_tools)} 个")
+    except Exception as e:
+        logger.warning(f"MCP 初始化跳过: {e}")
+
     # 从 config.yaml 读取 IM 渠道配置
     config = load_config()
     feishu_config = config.get("feishu", {})

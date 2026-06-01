@@ -9,7 +9,7 @@ from typing import Any, List, Optional
 
 from langchain_core.tools import BaseTool
 
-from research_agent.config.mcp import McpConfig, get_mcp_config
+from config.mcp import McpConfig, get_mcp_config
 from .client import build_servers_config
 
 logger = logging.getLogger(__name__)

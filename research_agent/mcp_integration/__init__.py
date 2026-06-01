@@ -6,7 +6,7 @@
 
 from .client import build_server_params, build_servers_config
 from .tools import get_mcp_tools, initialize_mcp_tools, get_cached_mcp_tools, reset_mcp_tools_cache
-from research_agent.config.mcp import McpConfig, McpServerConfig, McpOAuthConfig, get_mcp_config, reload_mcp_config
+from config.mcp import McpConfig, McpServerConfig, McpOAuthConfig, get_mcp_config, reload_mcp_config
 
 __all__ = [
     # 客户端

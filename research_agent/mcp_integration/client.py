@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict, Optional
 
-from research_agent.config.mcp import McpConfig, McpServerConfig
+from config.mcp import McpConfig, McpServerConfig
 
 logger = logging.getLogger(__name__)
 

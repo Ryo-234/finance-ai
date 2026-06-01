@@ -114,13 +114,17 @@ class ToolRegistry:
         return self._mcp_tools
 
     def list_mcp_tools(self) -> list:
-        """列出所有 MCP 工具的信息。
+        """列出所有 MCP 工具的信息（含可调用函数）。
 
         Returns:
             MCP 工具信息列表
         """
         return [
-            {"name": t.name, "description": t.description or ""}
+            {
+                "name": t.name,
+                "description": t.description or "",
+                "func": getattr(t, "func", None) or (lambda **kw: t.invoke(kw)),
+            }
             for t in self._mcp_tools
         ]
 

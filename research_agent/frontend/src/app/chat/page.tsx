@@ -382,14 +382,13 @@ export default function HomePage() {
               if (typeof window !== 'undefined') {
                 localStorage.removeItem('auth_token')
               }
-              // 清掉登录态后刷新当前页（仍在 chat 页面）
-              window.location.reload()
+              window.location.href = '/login'
             }}
             className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
             style={{ color: '#b91c1c' }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(220,38,38,0.08)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            title="退出登录（清除登录态，留在当前页）"
+            title="退出登录"
           >
             退出
           </button>

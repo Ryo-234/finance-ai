@@ -94,6 +94,25 @@ class ResearchState:
     # 已读取的图片 {path: {base64: str, mime_type: str}}
     viewed_images: Dict[str, Dict[str, str]] = field(default_factory=dict)
 
+    # ============ 金融投研相关字段 ============
+    # 报告类型：industry_research / company_deep / macro_brief / strategy_daily
+    report_type: str = ""
+
+    # 报告模板名称
+    report_template: str = ""
+
+    # 结构化金融数据（各数据源聚合后的结果）
+    financial_data: Dict[str, Any] = field(default_factory=dict)
+
+    # 合规检查标记
+    compliance_checked: bool = False
+
+    # 用户标识
+    user_id: str = ""
+
+    # 订阅方案：free / pro / enterprise
+    plan_type: str = "free"
+
     def get_next_task(self) -> Optional[Dict[str, Any]]:
         """获取下一个待执行的任务。"""
         if self.current_task_index >= len(self.tasks):
@@ -112,26 +131,44 @@ class ResearchState:
         """转换为字典（用于序列化）。"""
         return {
             "thread_id": self.thread_id,
+            "title": self.title,
             "user_input": self.user_input,
             "tasks": self.tasks,
             "current_task_index": self.current_task_index,
             "search_results": self.search_results,
             "knowledge_results": self.knowledge_results,
             "final_answer": self.final_answer,
-            "messages": self.messages,  # LangChain 消息对象
+            "messages": self.messages,
+            "sources": self.sources,
+            "error": self.error,
+            "report_type": self.report_type,
+            "report_template": self.report_template,
+            "financial_data": self.financial_data,
+            "compliance_checked": self.compliance_checked,
+            "user_id": self.user_id,
+            "plan_type": self.plan_type,
         }
 
     def to_serializable_dict(self) -> Dict[str, Any]:
         """转换为可序列化的字典（用于 Checkpointer）。"""
         return {
             "thread_id": self.thread_id,
+            "title": self.title,
             "user_input": self.user_input,
             "tasks": self.tasks,
             "current_task_index": self.current_task_index,
             "search_results": self.search_results,
             "knowledge_results": self.knowledge_results,
             "final_answer": self.final_answer,
-            "messages": messages_to_dict(self.messages),  # 转换为可序列化格式
+            "messages": messages_to_dict(self.messages),
+            "sources": self.sources,
+            "error": self.error,
+            "report_type": self.report_type,
+            "report_template": self.report_template,
+            "financial_data": self.financial_data,
+            "compliance_checked": self.compliance_checked,
+            "user_id": self.user_id,
+            "plan_type": self.plan_type,
         }
 
     @classmethod
@@ -146,6 +183,7 @@ class ResearchState:
 
         return cls(
             thread_id=data.get("thread_id", ""),
+            title=data.get("title", ""),
             user_input=data.get("user_input", ""),
             tasks=data.get("tasks", []),
             current_task_index=data.get("current_task_index", 0),
@@ -153,6 +191,14 @@ class ResearchState:
             knowledge_results=data.get("knowledge_results", ""),
             final_answer=data.get("final_answer", ""),
             messages=messages,
+            sources=data.get("sources", []),
+            error=data.get("error"),
+            report_type=data.get("report_type", ""),
+            report_template=data.get("report_template", ""),
+            financial_data=data.get("financial_data", {}),
+            compliance_checked=data.get("compliance_checked", False),
+            user_id=data.get("user_id", ""),
+            plan_type=data.get("plan_type", "free"),
         )
 
 

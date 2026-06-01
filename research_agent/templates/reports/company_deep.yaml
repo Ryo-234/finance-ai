@@ -1,0 +1,65 @@
+# 公司深度研究报告模板
+report_type: company_deep
+name: "公司深度分析报告"
+description: "适用于上市公司基本面深度分析，覆盖财务、估值、风险"
+
+sections:
+  - id: summary
+    title: "核心观点"
+    word_count: 200
+    prompt: |
+      用精炼语言总结：
+      1. 公司核心竞争力
+      2. 当前估值水平判断
+      3. 核心风险提示
+      4. 关键财务数据亮点（用 2-3 个指标说明）
+    required_sources: []
+
+  - id: company_profile
+    title: "公司概况"
+    word_count: 300
+    prompt: |
+      介绍公司的基本情况：
+      1. 主营业务与产品线
+      2. 实际控制人与管理层
+      3. 上市信息（代码、市值、PE、PB）
+      4. 近三年重大事项（并购、定增、股权激励等）
+    required_sources: ["cninfo"]
+
+  - id: financial_analysis
+    title: "财务分析"
+    word_count: 600
+    prompt: |
+      深度分析公司财务状况（近 3 年数据，用表格呈现）：
+      1. 营收与利润趋势（增速、波动性）
+      2. 盈利能力（毛利率、净利率、ROE、ROA）
+      3. 偿债能力（资产负债率、流动比率）
+      4. 现金流状况（经营/投资/筹资现金流）
+      5. 与同行业对比（选 3 家可比公司）
+    required_sources: ["eastmoney"]
+
+  - id: valuation
+    title: "估值分析"
+    word_count: 400
+    prompt: |
+      对公司当前估值进行分析：
+      1. 历史 PE/PB 分位数（近 5 年）
+      2. 与行业平均估值对比
+      3. 成长性分析（PEG 指标）
+      4. 估值合理性判断（非投资建议）
+    required_sources: ["eastmoney"]
+
+  - id: risks
+    title: "风险提示"
+    word_count: 200
+    prompt: |
+      列出公司面临的主要风险：
+      1. 经营风险（客户集中度、原材料波动等）
+      2. 行业竞争风险
+      3. 政策与监管风险
+      4. 估值风险
+    required_sources: []
+
+compliance:
+  disclaimer_at: "risks"
+  ai_marker_at: "header"

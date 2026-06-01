@@ -3,8 +3,8 @@ import { Providers } from '@/components/Providers'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Research Agent - 研究助手',
-  description: '智能研究助手 - 监控与管理界面',
+  title: '金融投研 AI - 智能研究报告助手',
+  description: '金融分析师的 AI 研究副驾驶 —— 输入研究课题，输出专业研究报告',
 }
 
 export default function RootLayout({

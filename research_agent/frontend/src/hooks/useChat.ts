@@ -28,7 +28,7 @@ export interface UseChatReturn {
   isLoading: boolean
   selectThread: (id: string | undefined) => void
   createThread: () => Promise<void>
-  sendMessage: (message: string) => Promise<void>
+  sendMessage: (message: string, reportType?: string) => Promise<void>
   deleteThread: (id: string) => Promise<void>
   startPolling: (threadId: string) => void
 }
@@ -136,7 +136,7 @@ export function useChat(): UseChatReturn {
   const streamBufferRef = useRef('')
 
   // 发送消息
-  const sendMessage = useCallback(async (message: string) => {
+  const sendMessage = useCallback(async (message: string, reportType?: string) => {
     if (!currentThread) return
 
     // 添加用户消息
@@ -152,11 +152,12 @@ export function useChat(): UseChatReturn {
     streamBufferRef.current = ''
 
     try {
-      // 使用流式发送
+      // 使用流式发送（含报告类型）
       await api.sendMessageStream(
         {
           message,
           thread_id: currentThread.threadId,
+          report_type: reportType,
         },
         (text) => {
           // 流式累积到 ref，定期同步到 state

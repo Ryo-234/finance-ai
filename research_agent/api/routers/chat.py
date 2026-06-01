@@ -87,6 +87,7 @@ class ChatRequest(BaseModel):
     chat_id: Optional[str] = Field("anonymous", description="渠道内用户 ID")
     stream: bool = Field(False, description="是否流式响应")
     context: Optional[dict] = Field({}, description="额外上下文")
+    report_type: Optional[str] = Field(None, description="报告类型：industry_research/company_deep/macro_brief/strategy_daily")
 
 
 class ChatResponse(BaseModel):
@@ -307,13 +308,25 @@ async def chat_stream(request: ChatRequest):
         # 后台任务：运行研究流程，逐 token 写入队列
         async def run_with_stream():
             try:
-                result = await run_research(
-                    user_input=request.message,
-                    thread_id=request.thread_id,
-                    user_id=request.context.get("user_id", "default"),
-                    checkpointer=checkpointer,
-                    stream_queue=stream_queue,
-                )
+                # 如果有 report_type，使用金融投研流水线
+                if request.report_type:
+                    from graph.research_graph import run_finance_research
+                    result = await run_finance_research(
+                        user_input=request.message,
+                        thread_id=request.thread_id,
+                        report_type=request.report_type,
+                        user_id=request.context.get("user_id", "default"),
+                        plan_type=request.context.get("plan_type", "free"),
+                        stream_queue=stream_queue,
+                    )
+                else:
+                    result = await run_research(
+                        user_input=request.message,
+                        thread_id=request.thread_id,
+                        user_id=request.context.get("user_id", "default"),
+                        checkpointer=checkpointer,
+                        stream_queue=stream_queue,
+                    )
                 return result
             except Exception as e:
                 logger.exception(f"研究流程执行失败: {e}")

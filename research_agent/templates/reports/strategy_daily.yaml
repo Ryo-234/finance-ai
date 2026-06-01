@@ -1,0 +1,62 @@
+# 策略日报模板
+report_type: strategy_daily
+name: "A 股策略日报"
+description: "适用于每日市场复盘，覆盖大盘回顾、热点板块、资金流向、操作策略"
+
+sections:
+  - id: summary
+    title: "今日概要"
+    word_count: 100
+    prompt: |
+      一句话概括今日市场：
+      1. 主要指数涨跌幅
+      2. 成交量变化
+      3. 北向资金动向
+    required_sources: ["eastmoney"]
+
+  - id: market_review
+    title: "大盘回顾"
+    word_count: 300
+    prompt: |
+      回顾今日 A 股市场表现：
+      1. 上证/深证/创业板指涨跌幅及分时走势特征
+      2. 成交量与换手率（与近 5 日均值对比）
+      3. 涨跌家数统计
+      4. 北向资金净流入/流出
+    required_sources: ["eastmoney"]
+
+  - id: hot_sectors
+    title: "热点板块"
+    word_count: 300
+    prompt: |
+      分析今日表现突出的板块：
+      1. 涨幅前 5 板块及驱动因素
+      2. 跌幅前 5 板块及原因分析
+      3. 龙头个股表现
+      4. 板块轮动逻辑研判
+    required_sources: ["eastmoney", "sina_finance"]
+
+  - id: capital_flow
+    title: "资金流向"
+    word_count: 200
+    prompt: |
+      分析今日资金动向：
+      1. 行业资金净流入/流出排名（用表格呈现前 5）
+      2. 主力资金 vs 散户资金行为差异
+      3. 融资融券变化
+    required_sources: ["eastmoney"]
+
+  - id: outlook
+    title: "明日展望"
+    word_count: 200
+    prompt: |
+      基于今日盘面，对明日进行展望：
+      1. 关键支撑/压力位
+      2. 需要关注的事件（政策发布、财报披露、外盘走势）
+      3. 风格研判（价值 vs 成长、大盘 vs 小盘）
+      4. 风险提示
+    required_sources: []
+
+compliance:
+  disclaimer_at: "outlook"
+  ai_marker_at: "header"

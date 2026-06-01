@@ -87,3 +87,41 @@ mcp:
     #   env:
     #     SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
     #   description: "提供 Slack API 访问"
+
+# 金融投研配置
+finance:
+  # 金融数据源
+  data_sources:
+    eastmoney:
+      enabled: true
+      base_url: "https://push2.eastmoney.com"
+    sina:
+      enabled: true
+    cninfo:
+      enabled: false
+
+  # 报告模板目录
+  report_templates_dir: "templates/reports"
+
+  # 合规配置
+  compliance:
+    auto_disclaimer: true
+    ai_marker: "【AI生成内容】"
+    source_annotation: true
+
+# 计费配置
+billing:
+  enabled: true
+  plans:
+    free:
+      monthly_reports: 3
+      max_tokens_per_month: 50000
+    pro:
+      monthly_price: 299
+      monthly_reports: -1  # 无限
+      max_tokens_per_month: 500000
+    enterprise:
+      monthly_price: 2999
+      seats_included: 5
+      monthly_reports: -1
+      max_tokens_per_month: 3000000

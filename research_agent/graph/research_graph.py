@@ -681,3 +681,247 @@ def deserialize_messages(data: list[dict]) -> list[BaseMessage]:
     if not data:
         return []
     return messages_from_dict(data)
+
+
+# ============================================================================
+# 金融投研图结构（新增）
+# ============================================================================
+
+_finance_graph: Optional[StateGraph] = None
+
+
+def create_finance_graph() -> StateGraph:
+    """创建金融投研流程图。
+
+    4 节点流水线：planner → finance_search → finance_knowledge → report_synthesizer → END
+    """
+    global _finance_graph
+
+    if _finance_graph is not None:
+        return _finance_graph
+
+    builder = StateGraph(ResearchState)
+
+    # 注册节点
+    builder.add_node("planner", _planner_node)
+    builder.add_node("finance_search", _finance_search_node)
+    builder.add_node("finance_knowledge", _finance_knowledge_node)
+    builder.add_node("report_synthesizer", _report_synthesizer_node)
+
+    builder.set_entry_point("planner")
+
+    # 意图路由
+    builder.add_conditional_edges(
+        "planner",
+        _route_after_planner,
+        {
+            "greeting": END,
+            "clarification": END,
+            "task": "finance_search",
+        }
+    )
+
+    # 金融流水线
+    builder.add_edge("finance_search", "finance_knowledge")
+    builder.add_edge("finance_knowledge", "report_synthesizer")
+    builder.add_edge("report_synthesizer", END)
+
+    _finance_graph = builder.compile()
+    logger.info("金融投研图已编译: planner → finance_search → finance_knowledge → report_synthesizer")
+
+    return _finance_graph
+
+
+async def _finance_search_node(state: ResearchState) -> dict:
+    """金融搜索节点 —— 从多个金融数据源获取数据。"""
+    state_dict = _state_to_dict(state)
+    thread_id = state_dict.get("thread_id")
+    runtime = _get_runtime_context(thread_id)
+
+    state_dict = await _apply_before_node("finance_search", state_dict, runtime)
+
+    try:
+        from agents.finance_search_agent import FinanceSearchAgent
+        agent = FinanceSearchAgent()
+        result = await agent.ainvoke(state_dict)
+        if isinstance(result, dict):
+            state_dict = {**state_dict, **result}
+    except Exception as e:
+        logger.error(f"金融搜索失败: {e}")
+        state_dict["search_results"] = f"金融搜索暂时不可用: {str(e)}"
+        state_dict["error"] = str(e)
+
+    state_dict = await _apply_after_node("finance_search", state_dict, runtime)
+    return state_dict
+
+
+async def _finance_knowledge_node(state: ResearchState) -> dict:
+    """金融知识整合节点 —— 按报告模板组织数据。"""
+    state_dict = _state_to_dict(state)
+    thread_id = state_dict.get("thread_id")
+    runtime = _get_runtime_context(thread_id)
+
+    state_dict = await _apply_before_node("finance_knowledge", state_dict, runtime)
+
+    try:
+        from agents.finance_knowledge_agent import FinanceKnowledgeAgent
+        agent = FinanceKnowledgeAgent()
+        result = await agent.ainvoke(state_dict)
+        if isinstance(result, dict):
+            state_dict = {**state_dict, **result}
+    except Exception as e:
+        logger.error(f"金融知识整合失败: {e}")
+        state_dict["knowledge_results"] = state_dict.get("search_results", "")
+        state_dict["error"] = str(e)
+
+    state_dict = await _apply_after_node("finance_knowledge", state_dict, runtime)
+    return state_dict
+
+
+async def _report_synthesizer_node(state: ResearchState) -> dict:
+    """报告合成节点 —— 按模板生成金融研究报告，注入合规声明。"""
+    state_dict = _state_to_dict(state)
+    thread_id = state_dict.get("thread_id")
+    runtime = _get_runtime_context(thread_id)
+
+    state_dict = await _apply_before_node("report_synthesizer", state_dict, runtime)
+
+    try:
+        from agents.report_synthesizer import ReportSynthesizerAgent
+        agent = ReportSynthesizerAgent()
+
+        # 流式输出
+        stream_queue = _streams.get(thread_id or "")
+        if stream_queue is not None:
+            async for partial in agent.ainvoke_stream(state_dict):
+                chunk = partial.get("partial_answer")
+                if chunk:
+                    await stream_queue.put(chunk)
+                final = partial.get("final_answer")
+                if final:
+                    state_dict = {**state_dict, "final_answer": final}
+            await stream_queue.put(None)
+        else:
+            result = await agent.ainvoke(state_dict)
+            if isinstance(result, dict):
+                state_dict = {**state_dict, **result}
+    except Exception as e:
+        logger.error(f"报告合成失败: {e}")
+        state_dict["final_answer"] = f"报告生成失败: {str(e)}"
+        state_dict["error"] = str(e)
+        stream_queue = _streams.get(thread_id or "")
+        if stream_queue is not None:
+            await stream_queue.put(None)
+
+    state_dict = await _apply_after_node("report_synthesizer", state_dict, runtime)
+    return state_dict
+
+
+async def run_finance_research(
+    user_input: str,
+    thread_id: Optional[str] = None,
+    report_type: str = "company_deep",
+    user_id: str = "",
+    plan_type: str = "free",
+    stream_queue: Optional["asyncio.Queue"] = None,
+) -> dict:
+    """运行金融投研流水线。
+
+    Args:
+        user_input: 用户的研究课题
+        thread_id: 线程 ID
+        report_type: 报告类型（industry_research/company_deep/macro_brief/strategy_daily）
+        user_id: 用户标识
+        plan_type: 订阅方案
+        stream_queue: 流式输出队列
+
+    Returns:
+        包含 final_answer/sources/compliance_checked 的字典
+    """
+    global _middleware_manager
+
+    if _middleware_manager is None:
+        from middleware.factory import get_default_middleware_manager
+        _middleware_manager = get_default_middleware_manager()
+
+    graph = create_finance_graph()
+
+    # 初始状态
+    initial_state = {
+        "user_input": user_input,
+        "thread_id": thread_id or "",
+        "report_type": report_type,
+        "user_id": user_id,
+        "plan_type": plan_type,
+        "messages": [HumanMessage(content=user_input)],
+    }
+
+    if stream_queue is not None and thread_id:
+        _streams[thread_id] = stream_queue
+
+    config = {}
+    if thread_id:
+        config["configurable"] = {"thread_id": thread_id}
+
+    # 执行金融图
+    result = await graph.ainvoke(initial_state, config=config)
+
+    # 清理流式管道
+    sq = _streams.pop(thread_id, None) if thread_id else None
+    if sq is not None:
+        try:
+            sq.put_nowait(None)
+        except asyncio.QueueFull:
+            pass
+
+    # 应用合规中间件
+    if _middleware_manager:
+        try:
+            from middleware.compliance import compliance_after_agent
+            result = await compliance_after_agent(initial_state, result)
+        except Exception as e:
+            logger.warning(f"合规中间件执行失败: {e}")
+
+    intent = result.get("intent", "task")
+
+    if intent == "greeting":
+        return {
+            "answer": result.get("greeting_response", ""),
+            "intent": "greeting",
+            "sources": [],
+            "tasks": [],
+            "title": "",
+            "error": None,
+            "thread_id": thread_id,
+            "compliance_checked": True,
+        }
+
+    if intent == "clarification" or result.get("needs_clarification", False):
+        return {
+            "answer": "",
+            "intent": "clarification",
+            "clarification": {
+                "question": result.get("clarification_question", ""),
+                "type": result.get("clarification_type", "missing_info"),
+                "options": result.get("clarification_options", []),
+                "context": result.get("clarification_context", ""),
+            },
+            "sources": [],
+            "tasks": [],
+            "title": "",
+            "error": None,
+            "thread_id": thread_id,
+            "compliance_checked": True,
+        }
+
+    return {
+        "answer": result.get("final_answer", ""),
+        "intent": "task",
+        "sources": result.get("sources", []),
+        "tasks": result.get("tasks", []),
+        "title": result.get("title", ""),
+        "error": result.get("error"),
+        "thread_id": thread_id,
+        "compliance_checked": result.get("compliance_checked", False),
+        "compliance_score": result.get("compliance_score", 0),
+    }

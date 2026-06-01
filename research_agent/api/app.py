@@ -49,6 +49,28 @@ async def lifespan(app: FastAPI):
     # 启动时初始化
     logger.info("Research Agent Gateway 启动中...")
 
+    # 初始化数据库
+    try:
+        from db.database import init_db
+        init_db()
+        logger.info("数据库已初始化")
+    except Exception as e:
+        logger.warning(f"数据库初始化跳过: {e}")
+
+    # 初始化金融数据源
+    try:
+        from data_sources.registry import get_registry
+        from data_sources.eastmoney import EastMoneyDataSource, EastMoneyFreeDataSource
+        from data_sources.sina_finance import SinaFinanceDataSource
+
+        ds_registry = get_registry()
+        ds_registry.register(EastMoneyFreeDataSource())
+        ds_registry.register(EastMoneyDataSource())
+        ds_registry.register(SinaFinanceDataSource())
+        logger.info(f"金融数据源已注册: {ds_registry.list_all()}")
+    except Exception as e:
+        logger.warning(f"金融数据源初始化跳过: {e}")
+
     # 初始化中间件管理器
     middleware_manager = get_default_middleware_manager()
     set_middleware_manager(middleware_manager)
@@ -148,6 +170,12 @@ def create_app() -> FastAPI:
     app.include_router(memory.router, tags=["memory"])
     app.include_router(models.router, tags=["models"])
     app.include_router(channels.router, tags=["channels"])
+
+    # 注册金融投研路由
+    from .routers import auth, reports, billing
+    app.include_router(auth.router, tags=["auth"])
+    app.include_router(reports.router, tags=["reports"])
+    app.include_router(billing.router, tags=["billing"])
 
     return app
 

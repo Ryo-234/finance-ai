@@ -41,6 +41,7 @@ export interface SendMessageParams {
   channel?: string
   chat_id?: string
   stream?: boolean
+  report_type?: string
 }
 
 class APIClient {

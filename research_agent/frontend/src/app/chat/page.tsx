@@ -112,6 +112,7 @@ export default function HomePage() {
   const [inputValue, setInputValue] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [isCreating, setIsCreating] = useState(false)
+  const [reportType, setReportType] = useState('company_deep')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -150,7 +151,7 @@ export default function HomePage() {
     setInputValue('')
 
     try {
-      await sendMessage(message)
+      await sendMessage(message, reportType)
     } catch (error) {
       console.error('Send failed:', error)
     }
@@ -568,6 +569,32 @@ export default function HomePage() {
               style={{ background: 'rgba(255,255,255,0.8)', borderColor: 'rgba(226,232,240,0.8)' }}
             >
               <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
+                {/* 报告类型选择器 */}
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs text-stone-400 flex-shrink-0">报告类型：</span>
+                  <div className="flex gap-1 flex-wrap">
+                    {[
+                      { value: 'company_deep', label: '公司深度' },
+                      { value: 'industry_research', label: '行业研究' },
+                      { value: 'macro_brief', label: '宏观简报' },
+                      { value: 'strategy_daily', label: '策略日报' },
+                    ].map((item) => (
+                      <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => setReportType(item.value)}
+                        className="px-2.5 py-1 rounded-full text-xs font-medium transition-all cursor-pointer"
+                        style={{
+                          background: reportType === item.value ? '#fef3c7' : '#f8fafc',
+                          color: reportType === item.value ? '#92400e' : '#78716c',
+                          border: reportType === item.value ? '1px solid #f59e0b' : '1px solid #e2e8f0',
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div
                   className="relative flex items-end gap-3 rounded-xl p-1 transition-colors"
                   style={{

@@ -1,0 +1,66 @@
+# 宏观经济简报模板
+report_type: macro_brief
+name: "宏观经济分析简报"
+description: "适用于宏观经济形势分析，覆盖政策解读、宏观数据、市场影响"
+
+sections:
+  - id: summary
+    title: "宏观速览"
+    word_count: 150
+    prompt: |
+      用 3-5 句话概括当前宏观经济形势的核心要点：
+      1. 增长态势
+      2. 通胀水平
+      3. 货币政策基调
+      4. 核心风险
+    required_sources: []
+
+  - id: policy
+    title: "政策解读"
+    word_count: 400
+    prompt: |
+      解读近期重要宏观政策：
+      1. 货币政策（利率、存款准备金率、公开市场操作）
+      2. 财政政策（赤字率、专项债、减税降费）
+      3. 产业政策（重点扶持方向、监管变化）
+      4. 政策效果评估与展望
+    required_sources: ["sina_finance"]
+
+  - id: macro_data
+    title: "宏观数据一览"
+    word_count: 400
+    prompt: |
+      用表格呈现近 6 个月关键宏观数据：
+      1. GDP 增速（季度）
+      2. CPI / PPI
+      3. PMI（制造业/非制造业）
+      4. 社会融资规模与 M2 增速
+      5. 进出口数据
+      6. 固定资产投资 / 社消零售总额
+    required_sources: ["eastmoney"]
+
+  - id: market_impact
+    title: "市场影响分析"
+    word_count: 300
+    prompt: |
+      分析当前宏观环境对金融市场的影响：
+      1. 对 A 股市场的影响（整体估值、风格切换）
+      2. 对债市的影响（利率走势研判）
+      3. 对大宗商品的影响
+      4. 对人民币汇率的影响
+    required_sources: ["sina_finance"]
+
+  - id: outlook
+    title: "展望"
+    word_count: 200
+    prompt: |
+      对未来 1-3 个月宏观经济走势进行展望：
+      1. 基准情景
+      2. 乐观情景
+      3. 悲观情景
+      4. 重点关注事件（政策会议、数据发布时间节点）
+    required_sources: []
+
+compliance:
+  disclaimer_at: "outlook"
+  ai_marker_at: "header"

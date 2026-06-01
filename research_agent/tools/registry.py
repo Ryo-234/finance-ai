@@ -202,13 +202,13 @@ def _register_default_tools(registry: ToolRegistry) -> None:
 
 
 def _register_default_agents(registry: ToolRegistry) -> None:
-    """注册默认 Agent。"""
+    """注册默认 Agent（含通用和金融专用 Agent）。"""
     from agents.planner import PlannerAgent
     from agents.search_agent import SearchAgent
-    from agents.rag_agent import RagAgent
     from agents.synthesizer import SynthesizerAgent
     from agents.knowledge_agent import KnowledgeAgent
 
+    # 通用 Agent
     registry.register_agent(AgentDefinition(
         name="planner",
         description="规划 Agent - 分析问题并拆解任务",
@@ -223,12 +223,6 @@ def _register_default_agents(registry: ToolRegistry) -> None:
     ))
 
     registry.register_agent(AgentDefinition(
-        name="rag",
-        description="RAG Agent - 从知识库检索信息",
-        agent_class=RagAgent,
-    ))
-
-    registry.register_agent(AgentDefinition(
         name="knowledge",
         description="知识库 Agent - 通过数据库查询获取信息",
         agent_class=KnowledgeAgent,
@@ -238,4 +232,27 @@ def _register_default_agents(registry: ToolRegistry) -> None:
         name="synthesizer",
         description="汇总 Agent - 整合结果生成最终回答",
         agent_class=SynthesizerAgent,
+    ))
+
+    # 金融投研专用 Agent
+    from agents.finance_search_agent import FinanceSearchAgent
+    from agents.finance_knowledge_agent import FinanceKnowledgeAgent
+    from agents.report_synthesizer import ReportSynthesizerAgent
+
+    registry.register_agent(AgentDefinition(
+        name="finance_search",
+        description="金融搜索 Agent - 从多数据源获取金融信息",
+        agent_class=FinanceSearchAgent,
+    ))
+
+    registry.register_agent(AgentDefinition(
+        name="finance_knowledge",
+        description="金融知识整合 Agent - 按报告模板组织数据",
+        agent_class=FinanceKnowledgeAgent,
+    ))
+
+    registry.register_agent(AgentDefinition(
+        name="report_synthesizer",
+        description="报告合成 Agent - 按模板生成金融研究报告",
+        agent_class=ReportSynthesizerAgent,
     ))

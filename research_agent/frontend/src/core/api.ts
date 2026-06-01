@@ -132,7 +132,6 @@ class APIClient {
 
       const decoder = new TextDecoder()
       let buffer = ''
-
       let chunkCount = 0
 
       while (true) {
@@ -142,63 +141,45 @@ class APIClient {
           buffer += decoder.decode(value, { stream: true })
         }
 
-        if (done) {
-          // 流结束，处理残余 buffer
-          decoder.decode()
-          if (buffer.trim()) {
-            const lines = buffer.split('\n')
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i]
-              if (line.startsWith('event: ')) {
-                const event = line.slice(7)
-                const dataLine = lines[i + 1]
-                if (dataLine?.startsWith('data: ')) {
-                  try {
-                    const data = JSON.parse(dataLine.slice(6))
-                    if (event === 'chunk' && data.text) {
-                      chunkCount++
-                      onChunk(data.text)
-                    } else if (event === 'done') {
-                      console.log(`SSE 流式完成: ${chunkCount} 个 chunk, title=${data.title}`)
-                      onDone(data)
-                    } else if (event === 'error') {
-                      onError(new Error(data.error))
-                    }
-                  } catch { /* 跳过 */ }
-                }
-              }
+        // 按 SSE 标准双换行（\n\n）分割事件
+        const events = buffer.split('\n\n')
+        // 最后一个可能不完整，保留在 buffer
+        buffer = events.pop() || ''
+
+        for (const raw of events) {
+          const trimmed = raw.trim()
+          if (!trimmed) continue
+
+          // 解析 event: 和 data: 行（可能顺序不同）
+          let eventType = ''
+          let dataStr = ''
+          for (const line of trimmed.split('\n')) {
+            if (line.startsWith('event: ')) {
+              eventType = line.slice(7).trim()
+            } else if (line.startsWith('data: ')) {
+              dataStr = line.slice(6)
             }
           }
-          break
-        }
 
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+          if (!eventType || !dataStr) continue
 
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i]
-          if (line.startsWith('event: ')) {
-            const event = line.slice(7)
-            const dataLine = lines[i + 1]
-            if (dataLine?.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(dataLine.slice(6))
-
-                if (event === 'chunk' && data.text) {
-                  chunkCount++
-                  onChunk(data.text)
-                } else if (event === 'done') {
-                  console.log(`SSE 流式完成: ${chunkCount} 个 chunk, title=${data.title}`)
-                  onDone(data)
-                } else if (event === 'error') {
-                  onError(new Error(data.error))
-                }
-              } catch {
-                console.warn('SSE JSON 解析跳过')
-              }
+          try {
+            const data = JSON.parse(dataStr)
+            if (eventType === 'chunk' && data.text) {
+              chunkCount++
+              onChunk(data.text)
+            } else if (eventType === 'done') {
+              console.log(`SSE 流式完成: ${chunkCount} 个 chunk, title=${data.title}`)
+              onDone(data)
+            } else if (eventType === 'error') {
+              onError(new Error(data.error))
             }
+          } catch {
+            // JSON 解析失败，跳过此事件
           }
         }
+
+        if (done) break
       }
     } catch (error) {
       onError(error instanceof Error ? error : new Error('Unknown error'))

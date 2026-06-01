@@ -143,7 +143,6 @@ def create_research_graph() -> StateGraph:
     # 添加节点
     builder.add_node("planner", _planner_node)
     builder.add_node("search", _search_node)
-    builder.add_node("rag", _rag_node)
     builder.add_node("knowledge", _knowledge_node)
     builder.add_node("synthesizer", _synthesizer_node)
 
@@ -155,15 +154,14 @@ def create_research_graph() -> StateGraph:
         "planner",
         _route_after_planner,
         {
-            "greeting": END,           # 问候直接结束
-            "clarification": END,      # 澄清直接结束
-            "task": "search",          # 任务继续执行
+            "greeting": END,
+            "clarification": END,
+            "task": "search",
         }
     )
 
-    # 任务流程：search → rag → knowledge → synthesizer → END
-    builder.add_edge("search", "rag")
-    builder.add_edge("rag", "knowledge")
+    # 任务流程：search → knowledge → synthesizer → END（精简，移除 RAG）
+    builder.add_edge("search", "knowledge")
     builder.add_edge("knowledge", "synthesizer")
     builder.add_edge("synthesizer", END)
 

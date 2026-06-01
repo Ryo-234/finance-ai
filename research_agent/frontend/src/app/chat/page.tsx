@@ -379,16 +379,17 @@ export default function HomePage() {
           </div>
           <button
             onClick={() => {
-              if (typeof window !== 'undefined' && localStorage.getItem('auth_token')) {
+              if (typeof window !== 'undefined') {
                 localStorage.removeItem('auth_token')
               }
-              window.location.href = '/'
+              // 清掉登录态后刷新当前页（仍在 chat 页面）
+              window.location.reload()
             }}
             className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
             style={{ color: '#b91c1c' }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(220,38,38,0.08)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-            title="退出登录"
+            title="退出登录（清除登录态，留在当前页）"
           >
             退出
           </button>

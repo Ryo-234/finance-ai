@@ -133,9 +133,39 @@ class APIClient {
 
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
+        if (value) {
+          buffer += decoder.decode(value, { stream: true })
+        }
+
+        if (done) {
+          // 流结束，处理残余 buffer
+          decoder.decode()  // 最终冲刷
+          if (buffer.trim()) {
+            const lines = buffer.split('\n')
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i]
+              if (line.startsWith('event: ')) {
+                const event = line.slice(7)
+                const dataLine = lines[i + 1]
+                if (dataLine?.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(dataLine.slice(6))
+                    if (event === 'chunk' && data.text) {
+                      onChunk(data.text)
+                    } else if (event === 'done') {
+                      onDone(data)
+                    } else if (event === 'error') {
+                      onError(new Error(data.error))
+                    }
+                  } catch { /* 跳过 */ }
+                }
+              }
+            }
+          }
+          break
+        }
+
         const lines = buffer.split('\n')
         buffer = lines.pop() || ''
 
@@ -145,14 +175,18 @@ class APIClient {
             const event = line.slice(7)
             const dataLine = lines[i + 1]
             if (dataLine?.startsWith('data: ')) {
-              const data = JSON.parse(dataLine.slice(6))
+              try {
+                const data = JSON.parse(dataLine.slice(6))
 
-              if (event === 'chunk' && data.text) {
-                onChunk(data.text)
-              } else if (event === 'done') {
-                onDone(data)
-              } else if (event === 'error') {
-                onError(new Error(data.error))
+                if (event === 'chunk' && data.text) {
+                  onChunk(data.text)
+                } else if (event === 'done') {
+                  onDone(data)
+                } else if (event === 'error') {
+                  onError(new Error(data.error))
+                }
+              } catch {
+                // JSON 解析失败时跳过此事件（数据行可能被截断）
               }
             }
           }

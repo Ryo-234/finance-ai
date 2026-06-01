@@ -57,17 +57,25 @@ class FinanceSearchAgent(BaseAgent):
         # 初始化来源追踪器
         tracker = SourceTracker()
 
-        # 从金融数据源获取数据
+        # 性能优化：金融数据源 + 通用网络搜索并发执行
+        import asyncio
         registry = get_registry()
-        docs = await registry.search_merged(
+        docs_task = registry.search_merged(
             query=query,
             plan_type=plan_type,
             report_type=report_type,
             max_total=15,
         )
+        web_task = self._search_web(query)
+        docs, web_results = await asyncio.gather(docs_task, web_task, return_exceptions=True)
 
-        # 同时执行通用网络搜索作为补充
-        web_results = await self._search_web(query)
+        # 异常降级
+        if isinstance(docs, Exception):
+            logger.warning(f"金融数据源搜索异常: {docs}")
+            docs = []
+        if isinstance(web_results, Exception):
+            logger.warning(f"网络搜索异常: {web_results}")
+            web_results = ""
 
         # 记录来源
         tracker.track_docs(docs)

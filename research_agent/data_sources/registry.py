@@ -56,7 +56,7 @@ class DataSourceRegistry:
         report_type: str = "",
         max_per_source: int = 5,
     ) -> Dict[str, List[FinanceDoc]]:
-        """从所有可用数据源并发搜索。
+        """从所有可用数据源**并发**搜索（asyncio.gather 同时发起请求）。
 
         参数：
             query: 搜索查询
@@ -68,26 +68,31 @@ class DataSourceRegistry:
             {source_name: [FinanceDoc, ...]}
         """
         source_names = self.list_for_plan(plan_type)
-        results: Dict[str, List[FinanceDoc]] = {}
 
-        for name in source_names:
+        async def _fetch_one(name: str) -> tuple[str, list]:
+            """封装单个数据源查询 + 超时保护 + 异常处理。"""
             source = self._sources[name]
             try:
-                # 每个数据源 10s 硬超时（防止单个数据源拖慢整个流程）
                 docs = await asyncio.wait_for(
                     source.search(query, max_results=max_per_source),
                     timeout=10.0,
                 )
-                results[name] = docs
                 logger.info(f"数据源 [{name}] 返回 {len(docs)} 条结果，查询: {query[:50]}")
+                return name, docs
             except asyncio.TimeoutError:
                 logger.warning(f"数据源 [{name}] 10s 超时，跳过")
-                results[name] = []
+                return name, []
             except Exception as e:
                 logger.warning(f"数据源 [{name}] 查询失败: {e}")
-                results[name] = []
+                return name, []
 
-        return results
+        # 真正的并发：所有数据源同时发起请求（不再串行）
+        results_list = await asyncio.gather(
+            *[_fetch_one(name) for name in source_names],
+            return_exceptions=False,
+        )
+
+        return dict(results_list)
 
     async def search_merged(
         self,

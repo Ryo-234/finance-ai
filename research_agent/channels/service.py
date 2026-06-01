@@ -35,9 +35,41 @@ def get_channel_manager() -> ChannelManager:
     return _channel_manager
 
 
+# 飞书渠道命令前缀 → 报告类型映射
+FEISHU_COMMAND_MAP = {
+    "/company": "company_deep",
+    "/industry": "industry_research",
+    "/macro": "macro_brief",
+    "/strategy": "strategy_daily",
+    "/公司": "company_deep",
+    "/行业": "industry_research",
+    "/宏观": "macro_brief",
+    "/策略": "strategy_daily",
+}
+
+REPORT_TYPE_LABELS = {
+    "company_deep": "公司深度",
+    "industry_research": "行业研究",
+    "macro_brief": "宏观简报",
+    "strategy_daily": "策略日报",
+}
+
+
+def _parse_feishu_command(text: str) -> tuple[str, str]:
+    """解析飞书消息中的命令前缀。
+
+    返回：(实际研究课题, 报告类型)
+    """
+    text = text.strip()
+    for prefix, report_type in FEISHU_COMMAND_MAP.items():
+        if text.startswith(prefix):
+            return text[len(prefix):].strip(), report_type
+    return text, "company_deep"  # 默认公司深度
+
+
 async def _create_agent_handler():
     """创建 Agent 消息处理器。"""
-    from graph.research_graph import run_research
+    from graph.research_graph import run_research, run_finance_research
     from langgraph.checkpoint.memory import InMemorySaver
 
     checkpointer = InMemorySaver()
@@ -46,58 +78,106 @@ async def _create_agent_handler():
         """处理收到的消息，调用 Agent 生成回复。"""
         logger.info(f"处理消息: chat_id={inbound.chat_id}, user_id={inbound.user_id}, text={inbound.text[:50]}...")
 
+        bus = get_message_bus()
+
         try:
             # 获取消息中的文件信息
             files_metadata = inbound.metadata.get("files", [])
 
-            # 构建用户输入（包含文件路径信息）
-            user_input = inbound.text
+            # 解析命令前缀（飞书专用：/company 等）
+            topic, report_type = _parse_feishu_command(inbound.text)
+
+            if not topic:
+                # 只有命令没有内容
+                await bus.publish_outbound(OutboundMessage(
+                    channel_name=inbound.channel_name,
+                    chat_id=inbound.chat_id,
+                    text="请输入研究课题，例如：\n/company 贵州茅台 600519 基本面分析\n/industry 新能源汽车 2025 趋势\n/macro 中国 Q1 宏观经济\n/strategy 今日 A 股策略",
+                    thread_ts=inbound.thread_ts,
+                ))
+                return
+
+            # 构建用户输入
+            user_input = topic
             if files_metadata:
                 file_paths = []
                 for f in files_metadata:
                     if f.get("type") == "image":
                         file_paths.append(f.get("path", ""))
                 if file_paths:
-                    # 在用户输入中注入图片路径
                     paths_str = ", ".join(file_paths)
                     user_input = f"用户上传了图片: {paths_str}\n\n{user_input}"
 
-            # 调用研究流程
-            result = await run_research(
-                user_input=user_input,
-                thread_id=inbound.chat_id,  # 使用 chat_id 作为 thread_id
-                user_id=inbound.user_id,
-                checkpointer=checkpointer,
-                files_metadata=files_metadata,
-            )
-
-            # 获取回复
-            answer = result.get("answer", "抱歉，我无法回答这个问题。")
-
-            # 创建回复消息
-            reply = OutboundMessage(
+            # 发送"正在处理"提示（避免飞书超时）
+            type_label = REPORT_TYPE_LABELS.get(report_type, "研究报告")
+            await bus.publish_outbound(OutboundMessage(
                 channel_name=inbound.channel_name,
                 chat_id=inbound.chat_id,
-                text=answer,
-                thread_ts=inbound.thread_ts,  # 用于回复追踪
-            )
+                text=f"🔄 正在生成【{type_label}】报告...\n课题：{topic[:80]}\n预计需要 30-60 秒",
+                thread_ts=inbound.thread_ts,
+            ))
 
-            # 发布回复到总线
-            bus = get_message_bus()
-            await bus.publish_outbound(reply)
-            logger.info(f"已发送回复到 {inbound.chat_id}: {answer[:50]}...")
+            # 异步任务：调用金融投研流水线（不阻塞消息总线）
+            async def run_finance():
+                try:
+                    result = await run_finance_research(
+                        user_input=user_input,
+                        thread_id=inbound.chat_id,
+                        report_type=report_type,
+                        user_id=inbound.user_id,
+                        plan_type="free",  # 飞书渠道默认 free
+                    )
+                    answer = result.get("answer", "抱歉，生成报告时遇到问题。")
+                    compliance = result.get("compliance_checked", False)
+                    compliance_tag = "✅ 合规通过\n\n" if compliance else ""
+
+                    final = (
+                        f"📊 已生成【{type_label}】报告\n\n"
+                        f"{compliance_tag}{answer}"
+                    )
+
+                    # 飞书消息有长度限制（默认 4000 字符），过长时分段
+                    MAX_LEN = 3500
+                    if len(final) <= MAX_LEN:
+                        await bus.publish_outbound(OutboundMessage(
+                            channel_name=inbound.channel_name,
+                            chat_id=inbound.chat_id,
+                            text=final,
+                            thread_ts=inbound.thread_ts,
+                        ))
+                    else:
+                        # 分段发送
+                        for i in range(0, len(final), MAX_LEN):
+                            chunk = final[i:i + MAX_LEN]
+                            await bus.publish_outbound(OutboundMessage(
+                                channel_name=inbound.channel_name,
+                                chat_id=inbound.chat_id,
+                                text=chunk,
+                                thread_ts=inbound.thread_ts,
+                            ))
+                            await asyncio.sleep(0.5)
+
+                    logger.info(f"已发送金融报告到 {inbound.chat_id}")
+                except Exception as e:
+                    logger.exception(f"飞书金融研究失败: {e}")
+                    await bus.publish_outbound(OutboundMessage(
+                        channel_name=inbound.channel_name,
+                        chat_id=inbound.chat_id,
+                        text=f"❌ 生成报告失败：{str(e)[:200]}",
+                        thread_ts=inbound.thread_ts,
+                    ))
+
+            # 提交异步任务，不阻塞 handle_message 返回
+            asyncio.create_task(run_finance())
 
         except Exception as e:
             logger.exception(f"处理消息失败: {e}")
-            # 发送错误回复
-            error_reply = OutboundMessage(
+            await bus.publish_outbound(OutboundMessage(
                 channel_name=inbound.channel_name,
                 chat_id=inbound.chat_id,
-                text=f"处理消息时出错: {str(e)}",
+                text=f"处理消息时出错: {str(e)[:200]}",
                 thread_ts=inbound.thread_ts,
-            )
-            bus = get_message_bus()
-            await bus.publish_outbound(error_reply)
+            ))
 
     return handle_message
 

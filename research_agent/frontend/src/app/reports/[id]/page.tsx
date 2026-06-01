@@ -27,6 +27,29 @@ const TYPE_LABELS: Record<string, string> = {
   strategy_daily: "策略日报",
 };
 
+async function downloadReport(reportId: string, format: "pdf" | "markdown") {
+  const token = localStorage.getItem("auth_token");
+  const res = await fetch(
+    `http://localhost:8001/api/reports/${reportId}/export?format=${format}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+  );
+  if (!res.ok) {
+    throw new Error("导出失败");
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  // 提取文件名（从 Content-Disposition 头）
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  a.download = match ? match[1] : `report.${format === "pdf" ? "pdf" : "md"}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [report, setReport] = useState<Report | null>(null);
@@ -92,6 +115,23 @@ export default function ReportDetailPage() {
             <span className={report.compliance_status === "passed" ? "text-green-600" : "text-red-500"}>
               {report.compliance_status === "passed" ? "合规通过" : "合规未通过"}
             </span>
+            <span className="w-px h-3 bg-gray-200" />
+            <button
+              onClick={() => downloadReport(report.id, "pdf").catch(() => alert("PDF 导出失败"))}
+              className="px-2.5 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors flex items-center gap-1"
+              title="导出 PDF 文件"
+            >
+              <Download className="w-3.5 h-3.5" />
+              导出 PDF
+            </button>
+            <button
+              onClick={() => downloadReport(report.id, "markdown").catch(() => alert("Markdown 导出失败"))}
+              className="px-2.5 py-1 rounded-lg border border-gray-300 text-gray-600 hover:border-amber-300 hover:text-amber-700 transition-colors flex items-center gap-1"
+              title="导出 Markdown 源文件"
+            >
+              <Download className="w-3.5 h-3.5" />
+              .md
+            </button>
             <span className="w-px h-3 bg-gray-200" />
             <Link href="/chat" className="text-gray-500 hover:text-amber-600 transition-colors">对话研究</Link>
             <Link href="/dashboard" className="text-gray-500 hover:text-amber-600 transition-colors">仪表板</Link>

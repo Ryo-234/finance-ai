@@ -188,3 +188,56 @@ def delete_report(report_id: str, request: Request):
         return {"message": "报告已删除", "report_id": report_id}
     finally:
         db_session.close()
+
+
+@router.get("/{report_id}/export")
+def export_report(report_id: str, format: str = "markdown"):
+    """导出报告为 Markdown 或 PDF。
+
+    参数：
+        format: 导出格式，支持 "markdown"（默认）和 "pdf"
+
+    返回：
+        文件下载响应（附件）
+    """
+    from fastapi.responses import Response
+    from services.report_exporter import export_report as do_export
+
+    db_session = DatabaseManager.get_instance().get_session()
+    try:
+        repo = ReportRepo(db_session)
+        report = repo.get_by_id(report_id)
+        if not report:
+            raise HTTPException(status_code=404, detail="报告不存在")
+
+        if not report.content:
+            raise HTTPException(status_code=400, detail="报告内容为空，无法导出")
+
+        try:
+            file_bytes, mime_type, filename = do_export(
+                report.content, report.title, format=format
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+        # 处理中文文件名（RFC 5987 编码）
+        from urllib.parse import quote
+        ascii_fallback = filename.encode("ascii", "ignore").decode("ascii") or "report"
+        encoded_filename = quote(filename)
+
+        return Response(
+            content=file_bytes,
+            media_type=mime_type,
+            headers={
+                "Content-Disposition": (
+                    f"attachment; "
+                    f'filename="{ascii_fallback}"; '
+                    f"filename*=UTF-8''{encoded_filename}"
+                ),
+                "Content-Length": str(len(file_bytes)),
+            },
+        )
+    finally:
+        db_session.close()

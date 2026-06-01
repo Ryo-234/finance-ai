@@ -79,6 +79,9 @@ export default function ReportDetailPage() {
             <span className={report.compliance_status === "passed" ? "text-green-600" : "text-red-500"}>
               {report.compliance_status === "passed" ? "合规通过" : "合规未通过"}
             </span>
+            <span className="w-px h-3 bg-gray-200" />
+            <Link href="/chat" className="text-gray-500 hover:text-amber-600 transition-colors">对话研究</Link>
+            <Link href="/dashboard" className="text-gray-500 hover:text-amber-600 transition-colors">仪表板</Link>
           </div>
         </div>
       </nav>

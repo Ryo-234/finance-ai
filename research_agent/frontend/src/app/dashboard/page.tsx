@@ -86,8 +86,8 @@ export default function DashboardPage() {
               金融投研 AI
             </Link>
             <div className="flex gap-4 text-sm">
-              <Link href="/dashboard" className="text-amber-700 font-medium">仪表板</Link>
               <Link href="/chat" className="text-gray-500 hover:text-gray-900">对话研究</Link>
+              <Link href="/dashboard" className="text-amber-700 font-medium">仪表板</Link>
               <Link href="/reports" className="text-gray-500 hover:text-gray-900">报告中心</Link>
             </div>
           </div>

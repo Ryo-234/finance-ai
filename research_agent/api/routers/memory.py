@@ -128,15 +128,15 @@ async def get_memory():
                 ),
             ),
             history=MemoryHistoryContext(
-                recent_months=MemoryHistorySection(
+                recent_months=MemoryContextSection(
                     summary=history_data.get("recentMonths", {}).get("summary", ""),
                     updated_at=history_data.get("recentMonths", {}).get("updatedAt", ""),
                 ),
-                earlier_context=MemoryHistorySection(
+                earlier_context=MemoryContextSection(
                     summary=history_data.get("earlierContext", {}).get("summary", ""),
                     updated_at=history_data.get("earlierContext", {}).get("updatedAt", ""),
                 ),
-                long_term_background=MemoryHistorySection(
+                long_term_background=MemoryContextSection(
                     summary=history_data.get("longTermBackground", {}).get("summary", ""),
                     updated_at=history_data.get("longTermBackground", {}).get("updatedAt", ""),
                 ),

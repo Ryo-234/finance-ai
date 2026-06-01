@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Optional, AsyncGenerator
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, AIMessage
@@ -286,7 +286,7 @@ async def _do_chat(
 
 
 @router.post("/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(request: ChatRequest, fastapi_request: Request):
     """流式聊天接口 —— 真正的逐 token 流式输出。
 
     使用 asyncio.Queue 管道：
@@ -296,6 +296,9 @@ async def chat_stream(request: ChatRequest):
     """
     if not request.thread_id:
         raise HTTPException(status_code=400, detail="thread_id is required for streaming")
+
+    # 从中间件注入的 request.state 拿 user_id（如果登录了）
+    user_id = getattr(fastapi_request.state, "user_id", "default_user") or "default_user"
 
     checkpointer = get_checkpointer()
 
@@ -376,6 +379,35 @@ async def chat_stream(request: ChatRequest):
             title = result.get("title", "")
             if title and request.thread_id in _threads_meta:
                 _threads_meta[request.thread_id].title = title
+
+            # 金融投研流水线：自动保存到 reports 表（让报告中心能看到）
+            if request.report_type and answer and len(answer) > 100:
+                try:
+                    from db.database import DatabaseManager
+                    from db.repositories.report_repo import ReportRepo
+
+                    db_session = DatabaseManager.get_instance().get_session()
+                    try:
+                        repo = ReportRepo(db_session)
+                        report = repo.create(
+                            user_id=user_id,
+                            title=title or f"{request.message[:50]} - {request.report_type}",
+                            report_type=request.report_type,
+                            topic=request.message,
+                            thread_id=request.thread_id,
+                        )
+                        repo.update_content(
+                            report.id,
+                            answer,
+                            result.get("sources", []),
+                        )
+                        if result.get("compliance_checked"):
+                            repo.update_compliance(report.id, "passed")
+                        logger.info(f"chat 报告已保存到 reports 表: {report.id} (user={user_id})")
+                    finally:
+                        db_session.close()
+                except Exception as e:
+                    logger.warning(f"保存 chat 报告到 reports 表失败: {e}")
 
             # 发送完成信号（含完整 answer、sources、tasks、title）
             yield f"event: done\ndata: {json.dumps({'answer': answer, 'sources': result.get('sources', []), 'tasks': result.get('tasks', []), 'title': title})}\n\n"

@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { Spinner } from "@/components/Spinner";
+import { EmptyState } from "@/components/EmptyState";
+import { ArrowLeft, FileText, Download, Share2 } from "lucide-react";
 
 interface Report {
   id: string;
@@ -43,7 +46,7 @@ export default function ReportDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin h-8 w-8 border-2 border-amber-600 border-t-transparent rounded-full" />
+        <Spinner className="w-8 h-8" style={{ color: '#d97706' }} />
       </div>
     );
   }
@@ -51,10 +54,20 @@ export default function ReportDetailPage() {
   if (!report) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <p className="text-gray-400 mb-4">报告不存在</p>
-          <Link href="/reports" className="text-amber-600 hover:underline">返回报告列表</Link>
-        </div>
+        <EmptyState
+          icon={<FileText className="w-12 h-12" />}
+          title="报告不存在"
+          description="该报告可能已被删除或您没有访问权限"
+          action={
+            <Link
+              href="/reports"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              返回报告中心
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -97,28 +110,8 @@ export default function ReportDetailPage() {
             </div>
           </div>
 
-          <div className="prose prose-gray max-w-none">
-            {report.content.split("\n").map((line, i) => {
-              if (line.startsWith("# ")) {
-                return <h1 key={i} className="text-2xl font-bold mt-8 mb-4 text-gray-900">{line.slice(2)}</h1>;
-              }
-              if (line.startsWith("## ")) {
-                return <h2 key={i} className="text-xl font-semibold mt-6 mb-3 text-gray-800">{line.slice(3)}</h2>;
-              }
-              if (line.startsWith("### ")) {
-                return <h3 key={i} className="text-lg font-medium mt-4 mb-2 text-gray-700">{line.slice(4)}</h3>;
-              }
-              if (line.startsWith("- ")) {
-                return <li key={i} className="ml-4 text-gray-700">{line.slice(2)}</li>;
-              }
-              if (line.startsWith("> ")) {
-                return <blockquote key={i} className="border-l-4 border-amber-300 pl-4 py-1 my-2 text-gray-500 italic">{line.slice(2)}</blockquote>;
-              }
-              if (line.trim() === "") {
-                return <br key={i} />;
-              }
-              return <p key={i} className="text-gray-700 leading-relaxed mb-2">{line}</p>;
-            })}
+          <div className="markdown-content max-w-none">
+            {renderMarkdown(report.content)}
           </div>
 
           {report.sources && report.sources.length > 0 && (
@@ -143,4 +136,157 @@ export default function ReportDetailPage() {
       </main>
     </div>
   );
+}
+
+// Markdown 渲染（支持标题/列表/表格/引用/代码/加粗/链接/分割线）
+function renderMarkdown(content: string): React.ReactNode[] {
+  const lines = content.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+
+  // 处理行内格式：加粗、斜体、代码、链接
+  const inline = (text: string): React.ReactNode => {
+    const parts: React.ReactNode[] = [];
+    let remaining = text;
+    let partKey = 0;
+    const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(text.slice(lastIndex, match.index));
+      }
+      if (match[2]) {
+        parts.push(<strong key={partKey++} className="font-semibold text-gray-900">{match[2]}</strong>);
+      } else if (match[3]) {
+        parts.push(<em key={partKey++} className="italic">{match[3]}</em>);
+      } else if (match[4]) {
+        parts.push(<code key={partKey++} className="px-1.5 py-0.5 bg-gray-100 text-pink-600 rounded text-sm font-mono">{match[4]}</code>);
+      } else if (match[5] && match[6]) {
+        parts.push(<a key={partKey++} href={match[6]} target="_blank" rel="noopener noreferrer" className="text-amber-600 hover:underline">{match[5]}</a>);
+      }
+      lastIndex = regex.lastIndex;
+    }
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+    return parts.length > 0 ? parts : text;
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // 空行
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+
+    // 分割线
+    if (/^---+$/.test(line.trim())) {
+      elements.push(<hr key={key++} className="my-6 border-gray-200" />);
+      i++;
+      continue;
+    }
+
+    // 标题
+    if (line.startsWith("# ")) {
+      elements.push(<h1 key={key++} className="text-2xl font-bold mt-8 mb-4 text-gray-900 pb-3 border-b border-gray-100">{inline(line.slice(2))}</h1>);
+      i++;
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      elements.push(<h2 key={key++} className="text-xl font-semibold mt-6 mb-3 text-gray-800">{inline(line.slice(3))}</h2>);
+      i++;
+      continue;
+    }
+    if (line.startsWith("### ")) {
+      elements.push(<h3 key={key++} className="text-lg font-medium mt-4 mb-2 text-gray-700">{inline(line.slice(4))}</h3>);
+      i++;
+      continue;
+    }
+
+    // 引用块
+    if (line.startsWith("> ")) {
+      elements.push(<blockquote key={key++} className="border-l-4 border-amber-300 pl-4 py-1 my-2 text-gray-500 italic bg-amber-50/50">{inline(line.slice(2))}</blockquote>);
+      i++;
+      continue;
+    }
+
+    // 表格（| col | col |）
+    if (line.trim().startsWith("|") && line.trim().endsWith("|")) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith("|") && lines[i].trim().endsWith("|")) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      // 跳过对齐行 | --- | --- |
+      const dataLines = tableLines.filter(l => !/^\|[\s-:|]+\|$/.test(l.trim()));
+      if (dataLines.length > 0) {
+        const parseRow = (l: string) => l.trim().slice(1, -1).split("|").map(c => c.trim());
+        const headers = parseRow(dataLines[0]);
+        const rows = dataLines.slice(1).map(parseRow);
+        elements.push(
+          <div key={key++} className="my-4 overflow-x-auto">
+            <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+              <thead className="bg-amber-50">
+                <tr>
+                  {headers.map((h, j) => (
+                    <th key={j} className="px-4 py-2 text-left font-medium text-gray-700 border-b border-gray-200">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, j) => (
+                  <tr key={j} className="hover:bg-gray-50">
+                    {row.map((c, k) => (
+                      <td key={k} className="px-4 py-2 border-b border-gray-100 text-gray-700">{inline(c)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+      continue;
+    }
+
+    // 无序列表
+    if (line.startsWith("- ") || line.startsWith("* ")) {
+      const items: string[] = [];
+      while (i < lines.length && (lines[i].startsWith("- ") || lines[i].startsWith("* "))) {
+        items.push(lines[i].slice(2));
+        i++;
+      }
+      elements.push(
+        <ul key={key++} className="list-disc list-inside space-y-1 my-2 text-gray-700">
+          {items.map((item, j) => <li key={j}>{inline(item)}</li>)}
+        </ul>
+      );
+      continue;
+    }
+
+    // 有序列表
+    if (/^\d+\.\s/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
+        items.push(lines[i].replace(/^\d+\.\s/, ""));
+        i++;
+      }
+      elements.push(
+        <ol key={key++} className="list-decimal list-inside space-y-1 my-2 text-gray-700">
+          {items.map((item, j) => <li key={j}>{inline(item)}</li>)}
+        </ol>
+      );
+      continue;
+    }
+
+    // 普通段落
+    elements.push(<p key={key++} className="text-gray-700 leading-relaxed mb-2">{inline(line)}</p>);
+    i++;
+  }
+
+  return elements;
 }

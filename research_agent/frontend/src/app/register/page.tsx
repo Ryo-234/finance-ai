@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
+import { showToast } from "@/lib/toast";
+import { Spinner } from "@/components/Spinner";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -20,9 +22,12 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register(email, password, displayName);
+      showToast("success", "注册成功，欢迎使用！");
       router.push("/dashboard");
     } catch (err: any) {
-      setError(err.message);
+      const msg = err.message || "注册失败";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setLoading(false);
     }
@@ -90,9 +95,9 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors font-medium"
+            className="w-full py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors font-medium flex items-center justify-center gap-2"
           >
-            {loading ? "注册中..." : "注册"}
+            {loading ? <><Spinner className="w-4 h-4" /> 注册中...</> : "注册"}
           </button>
         </form>
 

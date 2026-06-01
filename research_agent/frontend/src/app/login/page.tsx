@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
+import { showToast } from "@/lib/toast";
+import { Spinner } from "@/components/Spinner";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -19,9 +21,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
+      showToast("success", "登录成功");
       router.push("/dashboard");
     } catch (err: any) {
-      setError(err.message);
+      const msg = err.message || "登录失败";
+      setError(msg);
+      showToast("error", msg);
     } finally {
       setLoading(false);
     }
@@ -78,9 +83,9 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors font-medium"
+            className="w-full py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors font-medium flex items-center justify-center gap-2"
           >
-            {loading ? "登录中..." : "登录"}
+            {loading ? <><Spinner className="w-4 h-4" /> 登录中...</> : "登录"}
           </button>
         </form>
 

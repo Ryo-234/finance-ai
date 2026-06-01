@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import ReportCard from "@/components/ReportCard";
+import { Spinner } from "@/components/Spinner";
+import { EmptyState } from "@/components/EmptyState";
+import { FileText, Sparkles } from "lucide-react";
+import { showToast } from "@/lib/toast";
 
 interface Report {
   id: string;
@@ -69,7 +73,7 @@ export default function DashboardPage() {
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-2 border-amber-600 border-t-transparent rounded-full" />
+        <Spinner className="w-8 h-8" style={{ color: '#d97706' }} />
       </div>
     );
   }
@@ -166,14 +170,21 @@ export default function DashboardPage() {
             </Link>
           </div>
           {reports.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
-              <p className="text-gray-400 mb-3">还没有报告</p>
-              <Link
-                href="/chat"
-                className="inline-block px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700"
-              >
-                开始研究
-              </Link>
+            <div className="bg-white rounded-xl border border-gray-100">
+              <EmptyState
+                icon={<FileText className="w-12 h-12" />}
+                title="还没有报告"
+                description="试试开始你的第一次金融研究，30 秒内生成专业报告"
+                action={
+                  <Link
+                    href="/chat"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 transition-colors"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    开始研究
+                  </Link>
+                }
+              />
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

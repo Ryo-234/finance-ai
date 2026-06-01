@@ -39,7 +39,14 @@ function AnimatedLogo({ size = 'default' }: { size?: 'small' | 'default' | 'larg
 }
 
 // Empty State Component - 匹配落地页风格
-function EmptyState({ onNewThread, isCreating }: { onNewThread: () => void; isCreating: boolean }) {
+const SAMPLE_TOPICS = [
+  { type: 'company_deep', label: '分析贵州茅台 600519 基本面', desc: '公司深度' },
+  { type: 'industry_research', label: '新能源汽车行业 2025 趋势分析', desc: '行业研究' },
+  { type: 'macro_brief', label: '中国 2025 Q1 宏观经济简报', desc: '宏观简报' },
+  { type: 'strategy_daily', label: 'A 股今日市场复盘与策略', desc: '策略日报' },
+];
+
+function EmptyState({ onNewThread, isCreating, onSelectSample }: { onNewThread: () => void; isCreating: boolean; onSelectSample: (label: string, type: string) => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center" style={{ background: '#faf8f5' }}>
       {/* Logo */}
@@ -67,7 +74,7 @@ function EmptyState({ onNewThread, isCreating }: { onNewThread: () => void; isCr
         className="text-2xl font-bold text-stone-700 mb-2"
         style={{ fontFamily: "'Crimson Pro', serif" }}
       >
-        Research Agent
+        金融投研 AI
       </h2>
       <p className="text-stone-500 mb-8 text-center max-w-sm">
         智能研究助手，激活你的研究潜能
@@ -93,6 +100,25 @@ function EmptyState({ onNewThread, isCreating }: { onNewThread: () => void; isCr
         )}
         新建会话
       </button>
+
+      {/* 示例课题 */}
+      <div className="mt-12 w-full max-w-2xl px-6">
+        <p className="text-xs text-stone-400 mb-3 text-center">💡 试试这些研究课题</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {SAMPLE_TOPICS.map((topic) => (
+            <button
+              key={topic.label}
+              onClick={() => onSelectSample(topic.label, topic.type)}
+              className="text-left px-4 py-3 rounded-lg border border-stone-200 bg-white/60 hover:border-amber-300 hover:bg-amber-50/50 transition-all cursor-pointer group"
+            >
+              <div className="text-xs text-amber-600 mb-1">{topic.desc}</div>
+              <div className="text-sm text-stone-700 group-hover:text-amber-700 transition-colors">
+                {topic.label}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -171,6 +197,21 @@ export default function HomePage() {
       inputRef.current?.focus()
     } catch (error) {
       console.error('Create thread failed:', error)
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  // 点击示例课题：新建会话 + 设置输入框 + 设置报告类型
+  const handleSelectSample = async (label: string, type: string) => {
+    setReportType(type)
+    setIsCreating(true)
+    try {
+      await createThread()
+      setInputValue(label)
+      inputRef.current?.focus()
+    } catch (error) {
+      console.error('Sample thread failed:', error)
     } finally {
       setIsCreating(false)
     }
@@ -714,7 +755,7 @@ export default function HomePage() {
             </div>
           </>
         ) : (
-          <EmptyState onNewThread={handleNewThread} isCreating={isCreating} />
+          <EmptyState onNewThread={handleNewThread} isCreating={isCreating} onSelectSample={handleSelectSample} />
         )}
       </main>
     </div>

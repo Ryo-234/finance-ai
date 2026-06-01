@@ -174,9 +174,10 @@ export default function HomePage() {
     }
   }
 
-  // 过滤线程
+  // 过滤线程（支持按标题或 ID 搜索）
   const filteredThreads = threads.filter(t =>
-    t.thread_id.toLowerCase().includes(searchQuery.toLowerCase())
+    t.thread_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (t.title && t.title.toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
   // 获取需要显示的非 pending 阶段（渐进式披露：只显示已启动/已完成/失败的）
@@ -297,8 +298,8 @@ export default function HomePage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-medium text-stone-700">
-                        {thread.thread_id}
+                      <span className="text-sm font-medium text-stone-700 truncate">
+                        {thread.title || thread.thread_id}
                       </span>
                       {thread.status === 'busy' && (
                         <span
@@ -350,7 +351,9 @@ export default function HomePage() {
                   <MessageSquare className="w-4 h-4" style={{ color: '#d97706' }} />
                 </div>
                 <div>
-                  <div className="font-medium text-sm text-stone-700">会话 {currentThread.threadId}</div>
+                  <div className="font-medium text-sm text-stone-700 truncate max-w-xs">
+                    {currentThread.title || `会话 ${currentThread.threadId}`}
+                  </div>
                 </div>
               </div>
 

@@ -26,6 +26,9 @@ class ResearchState:
     # 线程 ID（用于流式管道和 Checkpointer）
     thread_id: str = ""
 
+    # 会话标题（由 TitleMiddleware 在首轮对话后自动生成）
+    title: str = ""
+
     # 用户输入
     user_input: str = ""
 

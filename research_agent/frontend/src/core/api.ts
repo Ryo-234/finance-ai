@@ -4,6 +4,7 @@ const API_BASE = env.apiBaseUrl
 
 export interface Thread {
   thread_id: string
+  title: string
   channel: string
   chat_id: string
   created_at: number
@@ -30,6 +31,7 @@ export interface ChatResponse {
   thread_id: string
   sources: Array<{ type: string; url?: string; source?: string }>
   tasks: Task[]
+  title?: string
   error?: string
 }
 

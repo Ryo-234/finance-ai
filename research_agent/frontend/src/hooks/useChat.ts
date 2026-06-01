@@ -15,6 +15,7 @@ interface ExtendedThread extends Thread {
 
 interface CurrentThread {
   threadId: string
+  title: string
   messages: ChatMessage[]
   status: 'idle' | 'busy' | 'streaming'
   tasks: Task[]
@@ -91,6 +92,7 @@ export function useChat(): UseChatReturn {
       currentThreadIdRef.current = thread.thread_id
       const extendedThread: CurrentThread = {
         threadId: thread.thread_id,
+        title: thread.title || '',
         messages: [],
         status: thread.status === 'busy' ? 'busy' : 'idle',
         tasks: [],
@@ -116,6 +118,7 @@ export function useChat(): UseChatReturn {
       currentThreadIdRef.current = thread.thread_id
       setCurrentThread({
         threadId: thread.thread_id,
+        title: thread.title || '',
         messages: [],
         status: 'idle',
         tasks: [],
@@ -182,6 +185,7 @@ export function useChat(): UseChatReturn {
                 ...prev,
                 status: 'idle',
                 tasks: response.tasks || [],
+                title: response.title || prev.title,
                 messages: [...prev.messages, { role: 'ai', content: response.answer }],
               }
             }
@@ -191,6 +195,7 @@ export function useChat(): UseChatReturn {
                 ...prev,
                 status: 'idle',
                 tasks: response.tasks || [],
+                title: response.title || prev.title,
                 messages: [
                   ...prev.messages.slice(0, -1),
                   { ...lastMessage, content: response.answer },
@@ -201,6 +206,7 @@ export function useChat(): UseChatReturn {
               ...prev,
               status: 'idle',
               tasks: response.tasks || [],
+              title: response.title || prev.title,
             }
           })
           // 刷新线程列表

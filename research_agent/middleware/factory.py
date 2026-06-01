@@ -19,6 +19,7 @@ from middleware import (
     ClarificationMiddleware,
 )
 from middleware.view_image import ViewImageMiddleware
+from middleware.title_middleware import TitleMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ class MiddlewareFactory:
         "context_compression": ContextCompressionMiddleware,
         "clarification": ClarificationMiddleware,
         "view_image": ViewImageMiddleware,
+        "title": TitleMiddleware,
     }
 
     def __init__(self, config: dict[str, Any] | None = None):
@@ -131,6 +133,7 @@ class MiddlewareFactory:
             "memory_injection",
             "view_image",  # 在 memory_injection 之后执行
             "loop_detection",
+            "title",  # 对话完成后生成标题
         ]
 
         for name in middleware_order:
@@ -255,6 +258,11 @@ def create_default_manager() -> MiddlewareManager:
         "view_image": {
             "enabled": True,
             "order": -8,  # 在 memory_injection 之后执行
+        },
+        "title": {
+            "enabled": True,
+            "order": 30,  # after_model 阶段，在插件链尾部
+            "max_chars": 30,
         },
     }
 

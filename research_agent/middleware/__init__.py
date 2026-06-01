@@ -40,6 +40,7 @@ from middleware.memory import MemoryMiddleware, MemoryInjectionMiddleware
 from middleware.token_tracking import TokenTrackingMiddleware, TokenBudgetMiddleware
 from middleware.summarization import SummarizationMiddleware, ContextCompressionMiddleware
 from middleware.clarification import ClarificationMiddleware
+from middleware.title_middleware import TitleMiddleware
 
 __all__ = [
     # 基础组件
@@ -64,5 +65,7 @@ __all__ = [
     "ContextCompressionMiddleware",
     # 澄清
     "ClarificationMiddleware",
+    # 标题生成
+    "TitleMiddleware",
 ]
 

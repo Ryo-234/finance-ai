@@ -95,6 +95,7 @@ class ChatResponse(BaseModel):
     thread_id: str = Field(..., description="线程 ID")
     sources: list = Field(default_factory=list, description="信息来源")
     tasks: list = Field(default_factory=list, description="执行的任务")
+    title: str = Field(default="", description="会话标题")
     error: Optional[str] = Field(None, description="错误信息")
 
 
@@ -171,6 +172,7 @@ async def chat(request: ChatRequest):
         thread_id=result.get("thread_id", ""),
         sources=result.get("sources", []),
         tasks=result.get("tasks", []),
+        title=result.get("title", ""),
         error=result.get("error"),
     )
 
@@ -231,6 +233,7 @@ async def chat_with_image(
         thread_id=thread_id,
         sources=result.get("sources", []),
         tasks=result.get("tasks", []),
+        title=result.get("title", ""),
         error=result.get("error"),
     )
 
@@ -350,8 +353,8 @@ async def chat_stream(request: ChatRequest):
             if answer:
                 _save_message(request.thread_id, "ai", answer)
 
-            # 发送完成信号（含完整 answer、sources、tasks）
-            yield f"event: done\ndata: {json.dumps({'answer': answer, 'sources': result.get('sources', []), 'tasks': result.get('tasks', [])})}\n\n"
+            # 发送完成信号（含完整 answer、sources、tasks、title）
+            yield f"event: done\ndata: {json.dumps({'answer': answer, 'sources': result.get('sources', []), 'tasks': result.get('tasks', []), 'title': result.get('title', '')})}\n\n"
 
         except Exception as e:
             logger.exception(f"流式聊天失败: {e}")

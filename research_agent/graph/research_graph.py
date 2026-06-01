@@ -593,7 +593,9 @@ async def run_research(
 
     # 应用 after_agent 中间件（用于异步任务如记忆更新）
     if _middleware_manager:
-        await _middleware_manager.apply_after_agent(result, runtime)
+        agent_result = await _middleware_manager.apply_after_agent(result, runtime)
+        if agent_result.updates:
+            result = {**result, **agent_result.updates}
 
     # 根据意图类型返回不同的响应
     intent = result.get("intent", "task")
@@ -609,6 +611,7 @@ async def run_research(
             "intent": "greeting",
             "sources": [],
             "tasks": [],
+            "title": result.get("title", ""),
             "error": None,
             "thread_id": thread_id,
         }
@@ -629,6 +632,7 @@ async def run_research(
             },
             "sources": [],
             "tasks": [],
+            "title": result.get("title", ""),
             "error": None,
             "thread_id": thread_id,
         }
@@ -639,6 +643,7 @@ async def run_research(
         "intent": "task",
         "sources": result.get("sources", []),
         "tasks": result.get("tasks", []),
+        "title": result.get("title", ""),
         "error": result.get("error"),
         "thread_id": thread_id,
     }

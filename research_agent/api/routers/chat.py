@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, AIMessage
 
 from graph.research_graph import run_research, serialize_messages, deserialize_messages
+from api.routers.threads import _threads_meta
 from langgraph.checkpoint.memory import InMemorySaver
 
 logger = logging.getLogger(__name__)

@@ -178,10 +178,12 @@ def create_minimax_chat_model(
     model_name: Optional[str] = None,
     temperature: Optional[float] = None,
     api_key: Optional[str] = None,
+    max_tokens: Optional[int] = None,
 ) -> ChatMiniMax:
     """创建 MiniMax chat model 实例。"""
     return ChatMiniMax(
         model_name=model_name or "MiniMax-M2.7",
         api_key=api_key,
         temperature=temperature or 0.7,
+        max_tokens=max_tokens or 4096,
     )

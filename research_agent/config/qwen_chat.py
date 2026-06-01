@@ -124,6 +124,7 @@ def create_qwen_chat_model(
     model_name: Optional[str] = None,
     temperature: Optional[float] = None,
     api_key: Optional[str] = None,
+    max_tokens: Optional[int] = None,
 ) -> ChatQWen:
     """创建通义千问 chat model 实例。"""
     from config.models import get_model_config
@@ -132,5 +133,6 @@ def create_qwen_chat_model(
     return ChatQWen(
         model_name=model_name or config.default_model,
         temperature=temperature if temperature is not None else config.temperature,
+        max_tokens=max_tokens or config.max_tokens,
         api_key=api_key or config.api_key,
     )

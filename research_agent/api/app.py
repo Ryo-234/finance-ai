@@ -2,12 +2,14 @@
 
 import logging
 import os
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .routers import threads, chat, memory, models, health, channels
 from graph.research_graph import set_middleware_manager
@@ -16,11 +18,18 @@ from middleware.auth import AuthMiddleware
 from tools.registry import get_tool_registry
 from channels.service import init_channels, shutdown_channels
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
+
+
+class 请求追踪中间件(BaseHTTPMiddleware):
+    """X-Request-ID 中间件 —— 为每个请求生成或透传追踪 ID。"""
+
+    async def dispatch(self, request: Request, call_next):
+        req_id = request.headers.get("X-Request-ID", str(uuid.uuid4())[:8])
+        request.state.request_id = req_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = req_id
+        return response
 
 
 def load_config() -> dict:
@@ -107,13 +116,16 @@ def create_app() -> FastAPI:
     # CORS 配置
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # 生产环境应该限制
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    # API Key 认证中间件（CORS 之后，路由之前）
+    # X-Request-ID 请求追踪
+    app.add_middleware(请求追踪中间件)
+
+    # API Key 认证中间件
     app.add_middleware(AuthMiddleware)
 
     # 注册路由

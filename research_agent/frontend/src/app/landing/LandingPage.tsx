@@ -168,26 +168,29 @@ function GlowButton({
   children,
   onClick,
   reduced,
+  variant = "primary",
+  ariaLabel,
 }: {
   children: React.ReactNode
   onClick: () => void
   reduced: boolean
+  variant?: "primary" | "secondary"
+  ariaLabel?: string
 }) {
+  const isPrimary = variant === "primary"
   return (
     <button
       onClick={onClick}
-      aria-label="进入 Research Agent"
+      aria-label={ariaLabel || (isPrimary ? "免费注册" : "登录")}
       className={cn(
-        'group relative px-10 py-5 rounded-2xl font-semibold text-lg text-white',
-        'overflow-hidden transition-all duration-300',
-        'bg-gradient-to-r from-amber-600 to-amber-500',
-        'hover:from-amber-500 hover:to-amber-400',
-        'shadow-2xl shadow-amber-600/30 hover:shadow-amber-500/40',
-        'cursor-pointer',
+        'group relative px-10 py-5 rounded-2xl font-semibold text-lg overflow-hidden transition-all duration-300 cursor-pointer',
+        isPrimary
+          ? 'text-white bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 shadow-2xl shadow-amber-600/30 hover:shadow-amber-500/40'
+          : 'text-amber-700 bg-white border-2 border-amber-200 hover:border-amber-400 hover:bg-amber-50 shadow-lg hover:shadow-xl',
       )}
     >
-      {/* 呼吸光晕 */}
-      {!reduced && (
+      {/* 呼吸光晕（仅主按钮） */}
+      {!reduced && isPrimary && (
         <span
           className="absolute inset-0 rounded-2xl"
           style={{
@@ -217,6 +220,14 @@ export default function LandingPage() {
 
   const handleEnter = () => {
     window.location.href = '/chat'
+  }
+
+  const handleLogin = () => {
+    window.location.href = '/login'
+  }
+
+  const handleRegister = () => {
+    window.location.href = '/register'
   }
 
   return (
@@ -301,17 +312,37 @@ export default function LandingPage() {
 
         {/* CTA 按钮 */}
         <div
-          className="flex justify-center"
+          className="flex justify-center gap-4 flex-wrap"
           style={{
             opacity: isLoaded ? 1 : 0,
             transform: isLoaded ? 'translateY(0)' : 'translateY(20px)',
             transition: prefersReducedMotion ? 'none' : 'all 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.4s',
           }}
         >
-          <GlowButton onClick={handleEnter} reduced={prefersReducedMotion}>
-            <span>开始使用</span>
+          <GlowButton onClick={handleRegister} reduced={prefersReducedMotion}>
+            <span>免费注册</span>
             <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
           </GlowButton>
+          <GlowButton onClick={handleLogin} reduced={prefersReducedMotion} variant="secondary">
+            <span>登录</span>
+          </GlowButton>
+        </div>
+
+        {/* 已注册用户直接进入对话 */}
+        <div
+          className="flex justify-center mt-6"
+          style={{
+            opacity: isLoaded ? 1 : 0,
+            transform: isLoaded ? 'translateY(0)' : 'translateY(20px)',
+            transition: prefersReducedMotion ? 'none' : 'all 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.6s',
+          }}
+        >
+          <button
+            onClick={handleEnter}
+            className="text-sm text-stone-500 hover:text-amber-600 transition-colors cursor-pointer underline-offset-4 hover:underline"
+          >
+            直接体验对话研究 →
+          </button>
         </div>
 
         {/* 底部留白 */}

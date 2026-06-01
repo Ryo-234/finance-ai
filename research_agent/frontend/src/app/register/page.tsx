@@ -29,12 +29,21 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 relative">
+      {/* 返回首页 */}
+      <Link
+        href="/"
+        className="absolute top-6 left-6 text-sm text-gray-500 hover:text-amber-600 transition-colors flex items-center gap-1 cursor-pointer"
+      >
+        ← 返回首页
+      </Link>
       <div className="max-w-md w-full bg-white rounded-2xl shadow-sm p-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold" style={{ fontFamily: "Crimson Pro, serif", color: "#d97706" }}>
-            创建账户
-          </h1>
+          <Link href="/" className="inline-block cursor-pointer">
+            <h1 className="text-3xl font-bold" style={{ fontFamily: "Crimson Pro, serif", color: "#d97706" }}>
+              金融投研 AI
+            </h1>
+          </Link>
           <p className="text-gray-500 mt-2">开始使用金融投研 AI 助手</p>
         </div>
 

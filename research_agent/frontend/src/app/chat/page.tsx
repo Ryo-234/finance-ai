@@ -451,6 +451,26 @@ export default function HomePage() {
                 <Link href="/settings" className="p-2 rounded-lg transition-colors cursor-pointer" style={{ color: '#94a3b8' }} title="设置">
                   <Settings className="w-4 h-4" />
                 </Link>
+                <span className="w-px h-4 bg-stone-300 mx-1" />
+                <Link href="/dashboard" className="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer" style={{ color: '#92400e', background: 'rgba(217,119,6,0.08)' }} title="返回仪表板">
+                  仪表板
+                </Link>
+                <Link href="/reports" className="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer hover:bg-stone-100" style={{ color: '#57534e' }} title="报告中心">
+                  报告中心
+                </Link>
+                <button
+                  onClick={() => {
+                    if (typeof window !== 'undefined' && localStorage.getItem('auth_token')) {
+                      localStorage.removeItem('auth_token')
+                    }
+                    window.location.href = '/'
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer hover:bg-red-50"
+                  style={{ color: '#b91c1c' }}
+                  title="退出登录"
+                >
+                  退出
+                </button>
                 <button
                   onClick={() => selectThread(undefined)}
                   className="p-2 rounded-lg transition-colors cursor-pointer"

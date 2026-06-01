@@ -559,6 +559,16 @@ async def run_research(
     if thread_id:
         state_dict["thread_id"] = thread_id
 
+    # 从线程元数据恢复已有标题（确保 TitleMiddleware 不会重复生成）
+    if thread_id:
+        try:
+            from api.routers.threads import _threads_meta
+            meta = _threads_meta.get(thread_id)
+            if meta and meta.title:
+                state_dict["title"] = meta.title
+        except Exception:
+            pass
+
     # 注意：图片路径已在用户消息文本中（由飞书渠道注入）
     # Planner 会自动检测并加载图片
 

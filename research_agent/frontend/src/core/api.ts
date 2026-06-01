@@ -141,8 +141,9 @@ class APIClient {
           buffer += decoder.decode(value, { stream: true })
         }
 
-        // 按 SSE 标准双换行（\n\n）分割事件
-        const events = buffer.split('\n\n')
+        // 统一换行符后按 SSE 标准双换行分割事件
+        const normalized = buffer.replace(/\r\n/g, '\n')
+        const events = normalized.split('\n\n')
         // 最后一个可能不完整，保留在 buffer
         buffer = events.pop() || ''
 

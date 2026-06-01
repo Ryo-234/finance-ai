@@ -139,12 +139,12 @@ class ChatMiniMax(BaseChatModel):
             "Content-Type": "application/json",
         }
 
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=300, sock_read=120)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 "https://api.minimax.chat/v1/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=aiohttp.ClientTimeout(total=300),
             ) as response:
                 if response.status != 200:
                     text = await response.text()

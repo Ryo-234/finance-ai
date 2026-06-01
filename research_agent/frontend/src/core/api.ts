@@ -44,6 +44,12 @@ export interface SendMessageParams {
   report_type?: string
 }
 
+export interface StageEvent {
+  stage: string
+  status: string
+  message: string
+}
+
 class APIClient {
   private baseUrl: string
 
@@ -109,7 +115,8 @@ class APIClient {
     params: SendMessageParams,
     onChunk: (text: string) => void,
     onDone: (response: ChatResponse) => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    onStage?: (stage: StageEvent) => void
   ): Promise<void> {
     try {
       const res = await fetch(`${this.baseUrl}/api/chat/stream`, {
@@ -171,6 +178,13 @@ class APIClient {
               chunkCount++
               totalChars += data.text.length
               onChunk(data.text)
+            } else if (eventType === 'stage' && onStage) {
+              // 阶段事件：让前端知道当前在做什么
+              onStage({
+                stage: data.stage || '',
+                status: data.status || '',
+                message: data.message || '',
+              })
             } else if (eventType === 'done') {
               console.log(
                 `SSE 完成: ${chunkCount} chunk, ${totalChars} 字, title="${data.title}", answer_len=${(data.answer || '').length}`

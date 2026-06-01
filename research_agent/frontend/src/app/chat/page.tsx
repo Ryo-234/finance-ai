@@ -128,6 +128,7 @@ export default function HomePage() {
     threads,
     currentThread,
     isLoading,
+    currentStage,
     selectThread,
     createThread,
     sendMessage,
@@ -651,7 +652,9 @@ export default function HomePage() {
                       >
                         <div className="flex items-center gap-2 text-stone-400">
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          <span className="text-sm">正在思考...</span>
+                          <span className="text-sm">
+                            {currentStage?.message || '正在思考...'}
+                          </span>
                         </div>
                       </div>
                     </div>

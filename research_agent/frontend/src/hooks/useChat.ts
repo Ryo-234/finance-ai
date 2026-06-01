@@ -26,6 +26,7 @@ export interface UseChatReturn {
   threads: Thread[]
   currentThread: CurrentThread | null
   isLoading: boolean
+  currentStage: { stage: string; status: string; message: string } | null
   selectThread: (id: string | undefined) => void
   createThread: () => Promise<void>
   sendMessage: (message: string, reportType?: string) => Promise<void>
@@ -37,9 +38,11 @@ export function useChat(): UseChatReturn {
   const [threads, setThreads] = useState<Thread[]>([])
   const [currentThread, setCurrentThread] = useState<CurrentThread | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [currentStage, setCurrentStage] = useState<{ stage: string; status: string; message: string } | null>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const currentThreadIdRef = useRef<string | null>(null)
+  const stageRef = useRef<{ stage: string; status: string; message: string } | null>(null)
 
   // 加载线程列表
   const loadThreads = useCallback(async () => {
@@ -160,6 +163,11 @@ export function useChat(): UseChatReturn {
           report_type: reportType,
         },
         (text) => {
+          // 收到第一个 chunk 后清空 stage 提示（开始输出内容）
+          if (stageRef.current) {
+            stageRef.current = null
+            setCurrentStage(null)
+          }
           // 流式累积到 ref，定期同步到 state
           streamBufferRef.current += text
           setCurrentThread(prev => {
@@ -174,9 +182,16 @@ export function useChat(): UseChatReturn {
             return { ...prev, messages: msgs }
           })
         },
+        (stageEvent) => {
+          // 阶段事件：更新 stage 状态（让 UI 显示"正在分析意图"等提示）
+          stageRef.current = stageEvent
+          setCurrentStage(stageEvent)
+        },
         (response: ChatResponse) => {
           // 完成：用完整 answer 替换
           const finalAnswer = response.answer || streamBufferRef.current
+          stageRef.current = null
+          setCurrentStage(null)
           setCurrentThread(prev => {
             if (!prev) return prev
             const msgs = [...prev.messages]
@@ -198,6 +213,8 @@ export function useChat(): UseChatReturn {
         },
         (error: Error) => {
           console.error('发送消息失败:', error)
+          stageRef.current = null
+          setCurrentStage(null)
           setCurrentThread(prev => {
             if (!prev) return prev
             return {
@@ -288,6 +305,7 @@ export function useChat(): UseChatReturn {
     threads,
     currentThread,
     isLoading,
+    currentStage,
     selectThread,
     createThread,
     sendMessage,

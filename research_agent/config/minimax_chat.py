@@ -106,6 +106,67 @@ class ChatMiniMax(BaseChatModel):
         result = await self._agenerate(messages)
         return result.generations[0].message
 
+    async def astream(self, messages: List[BaseMessage], **kwargs):
+        """流式调用 —— 逐 token 生成。
+
+        使用 OpenAI 兼容的 SSE 流式接口。
+
+        参数：
+            messages: LangChain 消息列表
+
+        产出：
+            每个文本增量
+        """
+        import json
+        import aiohttp
+
+        api_key = self.api_key or os.getenv("MINIMAX_API_KEY")
+        if not api_key:
+            raise ValueError("MINIMAX_API_KEY 环境变量未设置")
+
+        openai_messages = self._convert_to_openai_format(messages)
+
+        payload = {
+            "model": self.model_name,
+            "messages": openai_messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stream": True,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.minimax.chat/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=300),
+            ) as response:
+                if response.status != 200:
+                    text = await response.text()
+                    raise ValueError(f"MiniMax 流式 API 错误: {response.status} - {text}")
+
+                # 逐行读取 SSE 事件
+                async for line in response.content:
+                    line = line.decode("utf-8").strip()
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]  # 去掉 "data: " 前缀
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_str)
+                        delta = data.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        continue
+
 
 def create_minimax_chat_model(
     model_name: Optional[str] = None,

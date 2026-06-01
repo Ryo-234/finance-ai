@@ -132,6 +132,9 @@ export function useChat(): UseChatReturn {
     }
   }, [])
 
+  // 流式文本累积 ref（避免频繁 setState 导致 React 丢失更新）
+  const streamBufferRef = useRef('')
+
   // 发送消息
   const sendMessage = useCallback(async (message: string) => {
     if (!currentThread) return
@@ -146,6 +149,8 @@ export function useChat(): UseChatReturn {
       }
     })
 
+    streamBufferRef.current = ''
+
     try {
       // 使用流式发送
       await api.sendMessageStream(
@@ -154,62 +159,40 @@ export function useChat(): UseChatReturn {
           thread_id: currentThread.threadId,
         },
         (text) => {
-          // 流式更新消息
+          // 流式累积到 ref，定期同步到 state
+          streamBufferRef.current += text
           setCurrentThread(prev => {
             if (!prev) return prev
-            const lastMessage = prev.messages[prev.messages.length - 1]
-            if (lastMessage && lastMessage.role === 'ai') {
-              return {
-                ...prev,
-                messages: [
-                  ...prev.messages.slice(0, -1),
-                  { ...lastMessage, content: lastMessage.content + text },
-                ],
-              }
+            const msgs = [...prev.messages]
+            const lastMsg = msgs[msgs.length - 1]
+            if (lastMsg && lastMsg.role === 'ai') {
+              msgs[msgs.length - 1] = { ...lastMsg, content: streamBufferRef.current }
             } else {
-              return {
-                ...prev,
-                messages: [...prev.messages, { role: 'ai', content: text }],
-              }
+              msgs.push({ role: 'ai', content: streamBufferRef.current } as any)
             }
+            return { ...prev, messages: msgs }
           })
         },
         (response: ChatResponse) => {
-          // 完成更新
+          // 完成：用完整 answer 替换
+          const finalAnswer = response.answer || streamBufferRef.current
           setCurrentThread(prev => {
             if (!prev) return prev
-            const lastMessage = prev.messages[prev.messages.length - 1]
-            // 如果没有流式 chunk（如问候），用 answer 补上 AI 消息
-            if (response.answer && (!lastMessage || lastMessage.role !== 'ai')) {
-              return {
-                ...prev,
-                status: 'idle',
-                tasks: response.tasks || [],
-                title: response.title || prev.title,
-                messages: [...prev.messages, { role: 'ai', content: response.answer }],
-              }
-            }
-            // 如果有流式 chunk，确保最终内容与 answer 一致
-            if (response.answer && lastMessage && lastMessage.role === 'ai' && lastMessage.content !== response.answer) {
-              return {
-                ...prev,
-                status: 'idle',
-                tasks: response.tasks || [],
-                title: response.title || prev.title,
-                messages: [
-                  ...prev.messages.slice(0, -1),
-                  { ...lastMessage, content: response.answer },
-                ],
-              }
+            const msgs = [...prev.messages]
+            const lastMsg = msgs[msgs.length - 1]
+            if (lastMsg && lastMsg.role === 'ai') {
+              msgs[msgs.length - 1] = { ...lastMsg, content: finalAnswer }
+            } else if (finalAnswer) {
+              msgs.push({ role: 'ai', content: finalAnswer } as any)
             }
             return {
               ...prev,
               status: 'idle',
               tasks: response.tasks || [],
               title: response.title || prev.title,
+              messages: msgs,
             }
           })
-          // 刷新线程列表
           loadThreads()
         },
         (error: Error) => {

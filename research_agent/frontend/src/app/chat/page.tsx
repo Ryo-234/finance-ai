@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Search, Plus, Trash2, Send, Bot, User, Loader2, MessageSquare, Sparkles, X, Settings, ArrowLeft } from 'lucide-react'
+import { Search, Plus, Trash2, Send, Bot, User, Loader2, MessageSquare, Sparkles, X, Settings, ArrowLeft, Database } from 'lucide-react'
+import Link from 'next/link'
 import { useChat } from '@/hooks/useChat'
 import { cn } from '@/lib/utils'
 
@@ -442,7 +443,13 @@ export default function HomePage() {
               </div>
 
               {/* 右侧操作 */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <Link href="/memory" className="p-2 rounded-lg transition-colors cursor-pointer" style={{ color: '#94a3b8' }} title="记忆管理">
+                  <Database className="w-4 h-4" />
+                </Link>
+                <Link href="/settings" className="p-2 rounded-lg transition-colors cursor-pointer" style={{ color: '#94a3b8' }} title="设置">
+                  <Settings className="w-4 h-4" />
+                </Link>
                 <button
                   onClick={() => selectThread(undefined)}
                   className="p-2 rounded-lg transition-colors cursor-pointer"

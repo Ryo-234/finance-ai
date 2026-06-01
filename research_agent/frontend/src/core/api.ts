@@ -50,7 +50,7 @@ class APIClient {
     this.baseUrl = baseUrl
   }
 
-  private async request<T>(path: string, options?: RequestInit): Promise<T> {
+  async request<T>(path: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       ...options,
       headers: {

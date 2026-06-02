@@ -419,19 +419,20 @@ async def chat_stream(request: ChatRequest, fastapi_request: Request):
                             topic=request.message,
                             thread_id=request.thread_id,
                         )
+                        # 估算 Token 数（中文字符约 0.5 token/字）
+                        est_tokens = max(1, len(answer) // 2)
                         repo.update_content(
                             report.id,
                             answer,
                             result.get("sources", []),
                         )
+                        repo.update_token_used(report.id, est_tokens)
                         if result.get("compliance_checked"):
                             repo.update_compliance(report.id, "passed")
 
                         # 记录用量（报告 + 估算 Token）
                         quota = QuotaManager(db_session)
                         quota.record_report(user_id, report.id)
-                        # 估算 Token：中文字符 ~0.5 token/字
-                        est_tokens = max(1, len(answer) // 2)
                         quota.record_tokens(user_id, est_tokens, report.id)
 
                         logger.info(f"chat 报告已保存: {report.id} (user={user_id}, tokens≈{est_tokens})")

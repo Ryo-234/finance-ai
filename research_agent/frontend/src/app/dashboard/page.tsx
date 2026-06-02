@@ -56,14 +56,22 @@ export default function DashboardPage() {
     }
   }, [authLoading]);
 
+  const [runningTasksCount, setRunningTasksCount] = useState(0)
+
   const loadData = async (authToken: string) => {
     try {
-      const [reportsRes, usageRes] = await Promise.all([
+      const [reportsRes, usageRes, tasksRes] = await Promise.all([
         api.listReports({ limit: 5 }, authToken),
         api.getUsage(authToken),
+        api.listTasks(20, undefined, authToken),
       ]);
       setReports((reportsRes as any).reports || []);
       setUsage(usageRes as any);
+      // 计算运行中 + 等待中任务数
+      const allTasks: any[] = (tasksRes as any).tasks || [];
+      setRunningTasksCount(
+        allTasks.filter(t => t.status === 'running' || t.status === 'pending').length
+      );
     } catch (err) {
       console.error("加载数据失败:", err);
     } finally {
@@ -146,6 +154,27 @@ export default function DashboardPage() {
               <p className="text-2xl font-bold text-amber-600">{planName}</p>
             </div>
           </div>
+        )}
+
+        {/* 任务中快捷入口 */}
+        {runningTasksCount > 0 && (
+          <Link
+            href="/tasks"
+            className="block bg-gradient-to-r from-amber-50 to-amber-100 border border-amber-200 rounded-xl p-4 mb-4 hover:shadow-sm transition-all"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-600 flex items-center justify-center text-white font-bold">
+                  {runningTasksCount}
+                </div>
+                <div>
+                  <p className="font-medium text-amber-900">任务进行中</p>
+                  <p className="text-xs text-amber-700">点击查看进度</p>
+                </div>
+              </div>
+              <span className="text-amber-600 text-sm">→</span>
+            </div>
+          </Link>
         )}
 
         {/* 快捷入口 */}

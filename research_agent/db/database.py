@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import QueuePool
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +23,14 @@ class DatabaseManager:
         db_dir.mkdir(parents=True, exist_ok=True)
 
         db_url = f"sqlite:///{DB_PATH.absolute()}"
+        # 使用 QueuePool 支持多线程（后台任务线程 + FastAPI 线程池）
+        # pool_size=10: 最多 10 个连接；max_overflow=5: 突发可加 5 个
         self.engine = create_engine(
             db_url,
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
+            connect_args={"check_same_thread": False, "timeout": 30},
+            pool_size=10,
+            max_overflow=5,
+            pool_pre_ping=True,
             echo=False,
         )
 

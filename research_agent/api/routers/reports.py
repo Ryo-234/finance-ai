@@ -2,7 +2,7 @@
 
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -40,17 +40,37 @@ class ReportListResponse(BaseModel):
 
 @router.post("/generate", response_model=ReportResponse)
 async def generate_report(req: GenerateReportRequest, request: Request):
-    """生成金融研究报告。
+    """生成金融研究报告（同步端点，集成缓存）。
 
-    此接口触发完整的金融投研流水线：
-    planner → finance_search → finance_knowledge → report_synthesizer
+    - 缓存命中：秒级返回
+    - 缓存未命中：跑完整 4 节点流水线（~110 秒）
     """
     user_id = getattr(request.state, "user_id", "default_user")
     plan_type = getattr(request.state, "plan_type", "free")
 
-    # 先创建报告记录
     db_session = DatabaseManager.get_instance().get_session()
     try:
+        # === 第 1 步：缓存检查 ===
+        from db.repositories.cache_repo import CacheRepo
+        cache_repo = CacheRepo(db_session)
+        cached_report = cache_repo.get_cached_report(user_id, req.topic, req.report_type)
+        if cached_report:
+            logger.info(f"缓存命中: user={user_id}, report={cached_report.id}")
+            return ReportResponse(
+                id=cached_report.id,
+                user_id=cached_report.user_id,
+                title=cached_report.title,
+                report_type=cached_report.report_type,
+                topic=cached_report.topic,
+                content=cached_report.content,
+                sources=cached_report.sources,
+                status=cached_report.status,
+                compliance_status=cached_report.compliance_status,
+                token_used=cached_report.token_used,
+                created_at=cached_report.created_at.isoformat() if cached_report.created_at else None,
+            )
+
+        # === 第 2 步：缓存未命中，创建报告 + 跑流水线 ===
         repo = ReportRepo(db_session)
         report = repo.create(
             user_id=user_id,
@@ -80,6 +100,19 @@ async def generate_report(req: GenerateReportRequest, request: Request):
             report.id,
             "passed" if compliance_checked else "failed",
         )
+
+        # === 第 3 步：成功生成 → 写缓存（24h TTL） ===
+        try:
+            cache_repo.cache_report(
+                user_id=user_id,
+                topic=req.topic,
+                report_type=req.report_type,
+                report_id=report.id,
+                ttl_hours=24,
+            )
+            logger.info(f"缓存已写入: report={report.id}")
+        except Exception as e:
+            logger.warning(f"写缓存失败（不影响返回）: {e}")
 
         # 刷新数据
         report = repo.get_by_id(report.id)
@@ -172,6 +205,84 @@ def get_report(report_id: str, request: Request):
         )
     finally:
         db_session.close()
+
+
+# === 异步生成（后台任务化） ===
+
+class AsyncGenerateRequest(BaseModel):
+    """异步生成请求。"""
+    topic: str
+    report_type: str = "company_deep"
+    thread_id: str = ""
+
+
+@router.post("/async-generate")
+async def async_generate(req: AsyncGenerateRequest, request: Request, background_tasks: BackgroundTasks):
+    """异步生成报告（<100ms 响应，返回 task_id）。
+
+    解决 110 秒长耗时导致的 HTTP 切断问题。
+    策略：用独立 daemon 线程跑 _run_task，完全脱离 FastAPI event loop。
+    """
+    import threading
+    import asyncio
+    from services.task_manager import get_task_manager
+    from db.repositories.task_repo import TaskRepo
+
+    user_id = getattr(request.state, "user_id", "default_user") or "default_user"
+
+    if not req.topic or len(req.topic.strip()) < 2:
+        raise HTTPException(status_code=400, detail="课题太短")
+
+    # 1. 立即写 DB（同步）→ 拿到 task_id
+    db = DatabaseManager.get_instance()
+    with db.get_session() as session:
+        task = TaskRepo(session).create(
+            user_id=user_id,
+            topic=req.topic.strip(),
+            report_type=req.report_type,
+            thread_id=req.thread_id,
+        )
+        task_id = task.id
+
+    # 2. 用独立 daemon 线程 + asyncio.run 跑 _run_task
+    #    - 完全脱离 FastAPI event loop
+    #    - 线程立即返回，不阻塞响应
+    manager = get_task_manager()
+    def _runner():
+        try:
+            asyncio.run(manager._run_task(
+                task_id=task_id,
+                user_id=user_id,
+                topic=req.topic.strip(),
+                report_type=req.report_type,
+                thread_id=req.thread_id,
+            ))
+        except Exception as e:
+            print(f"[TASK THREAD ERROR] task_id={task_id}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    thread = threading.Thread(target=_runner, daemon=True, name=f"task-{task_id}")
+    thread.start()
+    manager._running[task_id] = thread
+    manager._stats["submitted"] += 1
+
+    return {
+        "task_id": task_id,
+        "status": "pending",
+        "message": "任务已提交，可通过 GET /api/tasks/{task_id} 查询进度",
+    }
+
+
+# === 缓存统计 ===
+
+@router.get("/_/cache/stats")
+async def cache_stats():
+    """缓存统计（命中率 + 数量）。"""
+    from db.repositories.cache_repo import CacheRepo
+    db = DatabaseManager.get_instance()
+    with db.get_session() as session:
+        return CacheRepo(session).get_stats()
 
 
 @router.delete("/{report_id}")

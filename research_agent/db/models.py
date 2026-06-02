@@ -119,3 +119,99 @@ class UsageRecord(Base):
             "metadata": self.metadata_json,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class ReportCache(Base):
+    """报告缓存 —— 同 query 第二次生成秒级返回。
+
+    缓存 key = md5(user_id + topic + report_type)
+    - 命中时不调 LLM，直接返回历史报告
+    - 失败任务不缓存
+    - 24 小时 TTL
+    - 命中次数统计（用于优化热点识别）
+    """
+
+    __tablename__ = "report_cache"
+
+    id = Column(String(32), primary_key=True, default=_new_uuid)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    topic_hash = Column(String(64), nullable=False, index=True)  # md5
+    topic = Column(Text, nullable=False)  # 原文（回显用）
+    report_type = Column(String(50), nullable=False)
+    report_id = Column(String(32), ForeignKey("reports.id"), nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    hit_count = Column(Integer, default=0)
+    last_hit_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
+
+    user = relationship("User")
+    report = relationship("Report")
+
+    __table_args__ = (
+        Index("idx_cache_user_hash", "user_id", "topic_hash"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "topic_hash": self.topic_hash,
+            "topic": self.topic,
+            "report_type": self.report_type,
+            "report_id": self.report_id,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "hit_count": self.hit_count,
+            "last_hit_at": self.last_hit_at.isoformat() if self.last_hit_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class Task(Base):
+    """后台任务表 —— 异步报告生成。
+
+    状态机：pending → running → completed / failed → (retry) → pending
+    """
+
+    __tablename__ = "tasks"
+
+    id = Column(String(32), primary_key=True, default=_new_uuid)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    thread_id = Column(String(50), default="")
+    report_type = Column(String(50), nullable=False)
+    topic = Column(Text, nullable=False)
+    status = Column(String(20), default="pending", index=True)  # pending / running / completed / failed
+    progress = Column(Integer, default=0)  # 0-100
+    current_stage = Column(String(50), default="")  # planner/finance_search/finance_knowledge/report_synthesizer
+    result_report_id = Column(String(32), ForeignKey("reports.id"), nullable=True)
+    error_message = Column(Text, default="")
+    celery_task_id = Column(String(64), default="")  # 预留 Celery 迁移
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    user = relationship("User")
+    report = relationship("Report")
+
+    __table_args__ = (
+        Index("idx_tasks_user_status", "user_id", "status"),
+        Index("idx_tasks_created", "created_at"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "thread_id": self.thread_id,
+            "report_type": self.report_type,
+            "topic": self.topic,
+            "status": self.status,
+            "progress": self.progress,
+            "current_stage": self.current_stage,
+            "result_report_id": self.result_report_id,
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }

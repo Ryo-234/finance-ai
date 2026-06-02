@@ -258,6 +258,40 @@ class APIClient {
   async getUsage(token?: string) {
     return this.request('/api/billing/usage', undefined, token)
   }
+
+  // 后台任务
+  async submitTask(topic: string, reportType: string = 'company_deep', threadId: string = '', token?: string) {
+    return this.request('/api/tasks/submit', {
+      method: 'POST',
+      body: JSON.stringify({ topic, report_type: reportType, thread_id: threadId }),
+    }, token)
+  }
+
+  async asyncGenerate(topic: string, reportType: string = 'company_deep', threadId: string = '', token?: string) {
+    return this.request('/api/reports/async-generate', {
+      method: 'POST',
+      body: JSON.stringify({ topic, report_type: reportType, thread_id: threadId }),
+    }, token)
+  }
+
+  async getTask(taskId: string, token?: string) {
+    return this.request(`/api/tasks/${taskId}`, undefined, token)
+  }
+
+  async listTasks(limit: number = 20, status?: string, token?: string) {
+    const sp = new URLSearchParams()
+    sp.set('limit', String(limit))
+    if (status) sp.set('status', status)
+    return this.request(`/api/tasks/?${sp}`, undefined, token)
+  }
+
+  async retryTask(taskId: string, token?: string) {
+    return this.request(`/api/tasks/${taskId}/retry`, { method: 'POST' }, token)
+  }
+
+  async cancelTask(taskId: string, token?: string) {
+    return this.request(`/api/tasks/${taskId}/cancel`, { method: 'POST' }, token)
+  }
 }
 
 export const api = new APIClient(API_BASE)

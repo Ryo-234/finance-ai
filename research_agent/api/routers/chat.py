@@ -380,9 +380,26 @@ async def chat_stream(request: ChatRequest, fastapi_request: Request):
             if answer:
                 _save_message(request.thread_id, "ai", answer)
 
-            # 同步标题到线程元数据
-            title = result.get("title", "")
-            if title and request.thread_id in _threads_meta:
+            # 用 topic 生成友好 title（不依赖 result.title 避免污染）
+            def _make_title(topic: str, report_type: str = "") -> str:
+                """根据用户输入生成报告标题。"""
+                topic = topic.strip()
+                if not topic:
+                    return "研究报告"
+                # 截取前 30 字 + 报告类型后缀
+                short = topic[:30]
+                type_labels = {
+                    "industry_research": "行业研究",
+                    "company_deep": "公司深度",
+                    "macro_brief": "宏观简报",
+                    "strategy_daily": "策略日报",
+                }
+                if report_type in type_labels:
+                    return f"{short} - {type_labels[report_type]}"
+                return short
+
+            title = _make_title(request.message, request.report_type)
+            if request.thread_id in _threads_meta:
                 _threads_meta[request.thread_id].title = title
 
             # 金融投研流水线：自动保存到 reports 表（让报告中心能看到）
@@ -390,13 +407,14 @@ async def chat_stream(request: ChatRequest, fastapi_request: Request):
                 try:
                     from db.database import DatabaseManager
                     from db.repositories.report_repo import ReportRepo
+                    from billing.quota_manager import QuotaManager
 
                     db_session = DatabaseManager.get_instance().get_session()
                     try:
                         repo = ReportRepo(db_session)
                         report = repo.create(
                             user_id=user_id,
-                            title=title or f"{request.message[:50]} - {request.report_type}",
+                            title=title,
                             report_type=request.report_type,
                             topic=request.message,
                             thread_id=request.thread_id,
@@ -408,7 +426,15 @@ async def chat_stream(request: ChatRequest, fastapi_request: Request):
                         )
                         if result.get("compliance_checked"):
                             repo.update_compliance(report.id, "passed")
-                        logger.info(f"chat 报告已保存到 reports 表: {report.id} (user={user_id})")
+
+                        # 记录用量（报告 + 估算 Token）
+                        quota = QuotaManager(db_session)
+                        quota.record_report(user_id, report.id)
+                        # 估算 Token：中文字符 ~0.5 token/字
+                        est_tokens = max(1, len(answer) // 2)
+                        quota.record_tokens(user_id, est_tokens, report.id)
+
+                        logger.info(f"chat 报告已保存: {report.id} (user={user_id}, tokens≈{est_tokens})")
                     finally:
                         db_session.close()
                 except Exception as e:

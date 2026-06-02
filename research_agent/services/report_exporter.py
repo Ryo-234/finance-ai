@@ -46,7 +46,8 @@ generator: 金融投研 AI v1.0
 
 """
         markdown_bytes = (header + content).encode("utf-8")
-        safe_title = re.sub(r'[^\w\-_]', '_', title)[:50]
+        # 文件名优先保留中文（用全角→半角转换 + 替换非法字符）
+        safe_title = _safe_filename(title)
         return markdown_bytes, "text/markdown", f"{safe_title}.md"
 
     def _export_pdf(self, content: str, title: str) -> Tuple[bytes, str, str]:
@@ -222,12 +223,30 @@ generator: 金融投研 AI v1.0
             doc.build(story)
             pdf_bytes = buffer.getvalue()
             buffer.close()
-            safe_title = re.sub(r'[^\w\-_]', '_', title)[:50]
+            safe_title = _safe_filename(title)
             return pdf_bytes, "application/pdf", f"{safe_title}.pdf"
 
         except ImportError as e:
             logger.error(f"reportlab 导入失败: {e}")
             raise RuntimeError("PDF 导出功能需要安装 reportlab")
+
+
+def _safe_filename(title: str, max_length: int = 60) -> str:
+    """生成安全的文件名（保留中文 + ASCII 字符，去除文件系统非法字符）。
+
+    策略：
+    - 保留所有中文、字母、数字、常见标点
+    - 替换 \\\\ / : * ? " < > | 为下划线
+    - 截断到 max_length 字符
+    - 全部为非法字符时回退到 "report"
+    """
+    if not title:
+        return "report"
+    cleaned = re.sub(r'[\\/:*?"<>|\r\n\t]', '_', title)
+    cleaned = re.sub(r'_+', '_', cleaned).strip('_. ')
+    if not cleaned:
+        return "report"
+    return cleaned[:max_length]
 
 
 # 全局单例

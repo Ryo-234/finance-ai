@@ -57,13 +57,19 @@ class APIClient {
     this.baseUrl = baseUrl
   }
 
-  async request<T>(path: string, options?: RequestInit): Promise<T> {
+  async request<T>(path: string, options?: RequestInit, token?: string): Promise<T> {
+    // 自动注入 Authorization（从 localStorage 或显式传入）
+    const authToken = token || (typeof window !== "undefined" ? localStorage.getItem("auth_token") : null)
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options?.headers as Record<string, string> | undefined),
+    }
+    if (authToken && !headers['Authorization']) {
+      headers['Authorization'] = `Bearer ${authToken}`
+    }
     const res = await fetch(`${this.baseUrl}${path}`, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
+      headers,
     })
 
     if (!res.ok) {
@@ -218,6 +224,39 @@ class APIClient {
   // 获取记忆
   async getMemory(): Promise<{ memory: string }> {
     return this.request('/api/memory/')
+  }
+
+  // 报告相关
+  async listReports(params?: { limit?: number; offset?: number; report_type?: string }, token?: string) {
+    const sp = new URLSearchParams()
+    if (params?.limit) sp.set('limit', String(params.limit))
+    if (params?.offset) sp.set('offset', String(params.offset))
+    if (params?.report_type) sp.set('report_type', params.report_type)
+    return this.request(`/api/reports/?${sp}`, undefined, token)
+  }
+
+  async getReport(reportId: string, token?: string) {
+    return this.request(`/api/reports/${reportId}`, undefined, token)
+  }
+
+  async generateReport(topic: string, reportType: string = 'company_deep', token?: string) {
+    return this.request('/api/reports/generate', {
+      method: 'POST',
+      body: JSON.stringify({ topic, report_type: reportType }),
+    }, token)
+  }
+
+  async exportReport(reportId: string, format: 'pdf' | 'markdown', token?: string) {
+    return this.request(`/api/reports/${reportId}/export?format=${format}`, undefined, token)
+  }
+
+  // 计费相关
+  async getPlans(token?: string) {
+    return this.request('/api/billing/plans', undefined, token)
+  }
+
+  async getUsage(token?: string) {
+    return this.request('/api/billing/usage', undefined, token)
   }
 }
 

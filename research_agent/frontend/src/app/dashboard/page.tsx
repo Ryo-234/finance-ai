@@ -4,11 +4,11 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
+import { api } from "@/core/api";
 import ReportCard from "@/components/ReportCard";
 import { Spinner } from "@/components/Spinner";
 import { EmptyState } from "@/components/EmptyState";
 import { FileText, Sparkles } from "lucide-react";
-import { showToast } from "@/lib/toast";
 
 interface Report {
   id: string;
@@ -29,45 +29,51 @@ interface UsageInfo {
 }
 
 export default function DashboardPage() {
-  const { user, token, loading: authLoading } = useAuth();
+  const { user, token, loading: authLoading, logout } = useAuth();
   const [reports, setReports] = useState<Report[]>([]);
   const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // 直接从 localStorage 读 token，避开 useAuth state 时序问题
+  const getStoredToken = () => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("auth_token");
+  };
+
   useEffect(() => {
-    if (!authLoading && !user) {
+    const storedToken = getStoredToken();
+
+    // 未登录：跳 login
+    if (!authLoading && !storedToken) {
       router.push("/login");
       return;
     }
-    if (token) {
-      loadData();
-    }
-  }, [user, authLoading, token]);
 
-  const loadData = async () => {
+    // 已登录：立即加载数据（不依赖 useAuth.user 状态）
+    if (storedToken) {
+      loadData(storedToken);
+    }
+  }, [authLoading]);
+
+  const loadData = async (authToken: string) => {
     try {
       const [reportsRes, usageRes] = await Promise.all([
-        fetch("http://localhost:8001/api/reports/?limit=5", {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch("http://localhost:8001/api/billing/usage", {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+        api.listReports({ limit: 5 }, authToken),
+        api.getUsage(authToken),
       ]);
-      if (reportsRes.ok) {
-        const data = await reportsRes.json();
-        setReports(data.reports || []);
-      }
-      if (usageRes.ok) {
-        const data = await usageRes.json();
-        setUsage(data);
-      }
+      setReports((reportsRes as any).reports || []);
+      setUsage(usageRes as any);
     } catch (err) {
       console.error("加载数据失败:", err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
   };
 
   if (authLoading || loading) {
@@ -99,7 +105,7 @@ export default function DashboardPage() {
             <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full text-xs">{planName}</span>
             <span className="text-gray-600">{user?.display_name || user?.email}</span>
             <button
-              onClick={() => { localStorage.removeItem("auth_token"); router.push("/login"); }}
+              onClick={handleLogout}
               className="text-gray-400 hover:text-gray-600"
             >
               退出

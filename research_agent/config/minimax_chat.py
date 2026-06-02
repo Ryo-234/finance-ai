@@ -85,6 +85,10 @@ class ChatMiniMax(BaseChatModel):
         result = response.json()
         content = result["choices"][0]["message"]["content"]
 
+        # 过滤掉 <think>...</think> 思考块
+        import re
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+
         return ChatResult(
             generations=[ChatGeneration(message=AIMessage(content=content))]
         )
@@ -158,6 +162,8 @@ class ChatMiniMax(BaseChatModel):
                     # 逐行读取 SSE 事件，按 stream_chunk_size 累积后批量 yield
                     buffer = ""
                     chunk_size = getattr(self, "stream_chunk_size", 30)
+                    # 思考过程过滤：识别 <think>...</think> 块
+                    in_think_block = False
                     async for raw_line in response.content:
                         line = raw_line.decode("utf-8").strip()
                         if not line or not line.startswith("data: "):
@@ -172,9 +178,35 @@ class ChatMiniMax(BaseChatModel):
                             data = json.loads(data_str)
                             delta = data.get("choices", [{}])[0].get("delta", {})
                             content = delta.get("content", "")
-                            if content:
-                                buffer += content
-                                # 累积到 chunk_size 个字符再 yield（减少事件数）
+                            if not content:
+                                continue
+
+                            # 增量处理 + 思考块过滤
+                            new_text = ""
+                            i = 0
+                            while i < len(content):
+                                if in_think_block:
+                                    # 在 <think> 块内，查找 </think> 结束
+                                    end_idx = content.find("</think>", i)
+                                    if end_idx == -1:
+                                        # 还在块内，跳过
+                                        i = len(content)
+                                    else:
+                                        in_think_block = False
+                                        i = end_idx + len("</think>")
+                                else:
+                                    # 在正常内容中，查找 <think> 开始
+                                    start_idx = content.find("<think>", i)
+                                    if start_idx == -1:
+                                        new_text += content[i:]
+                                        i = len(content)
+                                    else:
+                                        new_text += content[i:start_idx]
+                                        in_think_block = True
+                                        i = start_idx + len("<think>")
+
+                            if new_text:
+                                buffer += new_text
                                 if len(buffer) >= chunk_size:
                                     yield buffer
                                     buffer = ""

@@ -163,12 +163,11 @@ export function useChat(): UseChatReturn {
           report_type: reportType,
         },
         (text) => {
-          // 收到第一个 chunk 后清空 stage 提示（开始输出内容）
+          // onChunk
           if (stageRef.current) {
             stageRef.current = null
             setCurrentStage(null)
           }
-          // 流式累积到 ref，定期同步到 state
           streamBufferRef.current += text
           setCurrentThread(prev => {
             if (!prev) return prev
@@ -182,13 +181,8 @@ export function useChat(): UseChatReturn {
             return { ...prev, messages: msgs }
           })
         },
-        (stageEvent) => {
-          // 阶段事件：更新 stage 状态（让 UI 显示"正在分析意图"等提示）
-          stageRef.current = stageEvent
-          setCurrentStage(stageEvent)
-        },
         (response: ChatResponse) => {
-          // 完成：用完整 answer 替换
+          // onDone
           const finalAnswer = response.answer || streamBufferRef.current
           stageRef.current = null
           setCurrentStage(null)
@@ -212,6 +206,7 @@ export function useChat(): UseChatReturn {
           loadThreads()
         },
         (error: Error) => {
+          // onError
           console.error('发送消息失败:', error)
           stageRef.current = null
           setCurrentStage(null)
@@ -226,6 +221,11 @@ export function useChat(): UseChatReturn {
               ],
             }
           })
+        },
+        (stageEvent) => {
+          // onStage（第 5 个参数）
+          stageRef.current = stageEvent
+          setCurrentStage(stageEvent)
         }
       )
     } catch (error) {

@@ -310,7 +310,7 @@ export default function ReportMarkdown({ content, className }: ReportMarkdownPro
   const blocks = parseMarkdown(content);
 
   return (
-    <div className={cn("report-markdown text-[15px] text-gray-700 space-y-3", className)}>
+    <div className={cn("report-markdown text-[15px] text-gray-700 space-y-3 leading-loose", className)}>
       {blocks.map((block, idx) => {
         switch (block.type) {
           case "h1":
@@ -344,7 +344,8 @@ export default function ReportMarkdown({ content, className }: ReportMarkdownPro
             return (
               <p
                 key={idx}
-                className="text-gray-700 leading-relaxed"
+                className="text-gray-700 leading-loose"
+                style={{ textIndent: "2em" }}
               >
                 {renderInlineOnce(block.content || "")}
               </p>
@@ -353,7 +354,7 @@ export default function ReportMarkdown({ content, className }: ReportMarkdownPro
             return (
               <div
                 key={idx}
-                className="text-gray-700 leading-relaxed pl-2 flex gap-2"
+                className="text-gray-700 leading-loose pl-2 flex gap-2"
               >
                 <span className="text-amber-500 shrink-0">•</span>
                 <span>{renderInlineOnce(block.content || "")}</span>
@@ -363,7 +364,8 @@ export default function ReportMarkdown({ content, className }: ReportMarkdownPro
             return (
               <blockquote
                 key={idx}
-                className="border-l-4 border-amber-300 bg-amber-50/50 pl-4 pr-3 py-2 my-2 text-gray-600 italic rounded-r"
+                className="border-l-4 border-amber-300 bg-amber-50/50 pl-4 pr-3 py-2 my-2 text-gray-600 italic rounded-r leading-loose"
+                style={{ textIndent: "2em" }}
               >
                 {renderInlineOnce(block.content || "")}
               </blockquote>

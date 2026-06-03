@@ -118,12 +118,19 @@ class ReportSynthesizerAgent(BaseAgent):
             section_completed = [False] * len(sections)
 
             async def _gen_one_streaming(idx, section):
-                """单章节流式生成：边收 LLM token 边推送到 queue。"""
+                """单章节流式生成：边收 LLM token 边推送到 queue。
+
+                关键约束：让 LLM **不要**输出 "## {title}" 章节标题
+                （因为模板驱动拼接时会再加一次）。
+                """
                 from langchain_core.messages import HumanMessage, SystemMessage
                 title = section.get("title", "")
                 try:
                     content = ""
-                    prompt = f"""请撰写报告的"{title}"章节。
+                    prompt = f"""请撰写"{title}"章节的内容。
+
+**重要**：请**直接开始写正文**，不要输出 "## {title}" 这种二级标题
+（标题由系统模板统一添加，你只需要写标题下方的内容）。
 
 ## 研究课题
 {user_input}
@@ -137,6 +144,7 @@ class ReportSynthesizerAgent(BaseAgent):
 ## 格式要求
 - 字数：约 {section.get('word_count', 300)} 字
 - 使用 Markdown 格式
+- 不要给出投资建议
 - 不要给出投资建议
 """
                     buffer = ""
@@ -291,7 +299,10 @@ class ReportSynthesizerAgent(BaseAgent):
         """生成单个章节内容。"""
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        prompt = f"""请撰写报告的"{section_title}"章节。
+        prompt = f"""请撰写"{section_title}"章节的内容。
+
+**重要**：请**直接开始写正文**，不要输出 "## {section_title}" 这种二级标题
+（标题由系统模板统一添加，你只需要写标题下方的内容）。
 
 ## 研究课题
 {topic}

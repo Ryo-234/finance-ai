@@ -5,6 +5,7 @@ import { Search, Plus, Trash2, Send, Bot, User, Loader2, MessageSquare, Sparkles
 import Link from 'next/link'
 import { useChat } from '@/hooks/useChat'
 import { cn } from '@/lib/utils'
+import ReportMarkdown from '@/components/ReportMarkdown'
 
 // 阶段配置字典 - 按 task_type 动态查找，不再硬编码渲染顺序
 const STAGE_CONFIG: Record<string, { label: string; color: string; textColor: string }> = {
@@ -610,15 +611,19 @@ export default function HomePage() {
                           borderRadius: message.role === 'human' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                         }}
                       >
-                        <p className="whitespace-pre-wrap break-all leading-relaxed">
-                          {message.content}
+                        <div className="leading-relaxed">
+                          {message.content.includes('#') || message.content.includes('##') || message.content.includes('|') ? (
+                            <ReportMarkdown content={message.content} />
+                          ) : (
+                            <p className="whitespace-pre-wrap break-all">{message.content}</p>
+                          )}
                           {currentThread.status === 'streaming' && index === currentThread.messages.length - 1 && message.role === 'ai' && (
                             <span
                               className="inline-block w-2 h-4 ml-1 animate-pulse"
                               style={{ background: '#d97706' }}
                             />
                           )}
-                        </p>
+                        </div>
                       </div>
                       {message.role === 'human' && (
                         <div

@@ -722,58 +722,43 @@ export default function HomePage() {
                     style={{ color: '#374151' }}
                     rows={1}
                   />
-                  <button
-                    type="submit"
-                    disabled={!inputValue.trim() || currentThread.status === 'streaming'}
-                    className={cn(
-                      'px-5 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 transition-all flex-shrink-0 cursor-pointer',
-                    )}
-                    style={{
-                      background:
-                        inputValue.trim() && currentThread.status !== 'streaming'
+                  {currentThread.status === 'streaming' ? (
+                    // 停止生成：独立 button，避开 disabled 父 button 吞 click 的坑
+                    <button
+                      type="button"
+                      onClick={cancelInflight}
+                      className="px-5 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 transition-all flex-shrink-0 cursor-pointer"
+                      style={{
+                        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                        color: '#fff',
+                        boxShadow: '0 4px 12px rgba(220, 38, 38, 0.3)',
+                      }}
+                      title="停止生成（已生成内容会保留）"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      停止生成
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={!inputValue.trim()}
+                      className={cn(
+                        'px-5 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 transition-all flex-shrink-0 cursor-pointer',
+                      )}
+                      style={{
+                        background: inputValue.trim()
                           ? 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)'
                           : 'rgba(248,250,252,0.8)',
-                      color:
-                        inputValue.trim() && currentThread.status !== 'streaming' ? '#fff' : '#94a3b8',
-                      boxShadow:
-                        inputValue.trim() && currentThread.status !== 'streaming'
+                        color: inputValue.trim() ? '#fff' : '#94a3b8',
+                        boxShadow: inputValue.trim()
                           ? '0 4px 12px rgba(217, 119, 6, 0.25)'
                           : 'none',
-                    }}
-                  >
-                    {currentThread.status === 'streaming' ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            if (confirm('确定停止当前生成？\n已生成的内容会保留。')) {
-                              cancelInflight()
-                            }
-                          }}
-                          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-all cursor-pointer"
-                          style={{
-                            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                            color: '#fff',
-                            boxShadow: '0 2px 6px rgba(220, 38, 38, 0.3)',
-                          }}
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          停止生成
-                        </button>
-                        <span className="ml-1.5 flex items-center gap-1 text-xs text-stone-400">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          生成中
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4" />
-                        发送
-                      </>
-                    )}
-                  </button>
+                      }}
+                    >
+                      <Send className="w-4 h-4" />
+                      发送
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center justify-between mt-2 px-1">
                   <span className="text-xs text-stone-400">Enter 发送，Shift + Enter 换行</span>

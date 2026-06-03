@@ -28,6 +28,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }
   running: { label: "生成中", color: "text-blue-700", bg: "bg-blue-50" },
   completed: { label: "已完成", color: "text-green-700", bg: "bg-green-50" },
   failed: { label: "失败", color: "text-red-700", bg: "bg-red-50" },
+  cancelled: { label: "已取消", color: "text-gray-500", bg: "bg-gray-50" },
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -93,7 +94,7 @@ export default function TasksPage() {
       <nav className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-xl font-bold" style={{ fontFamily: "Crimson Pro, serif", color: "#d97706" }}>
+            <Link href="/chat" className="text-xl font-bold" style={{ fontFamily: "Crimson Pro, serif", color: "#d97706" }}>
               金融投研 AI
             </Link>
             <span className="text-gray-300">/</span>
@@ -166,15 +167,33 @@ export default function TasksPage() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2">
                       {task.status === "running" && (
-                        <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              if (confirm(`确定停止任务"${task.topic}"？`)) {
+                                handleCancel(task.id)
+                              }
+                            }}
+                            className="px-2 py-1 text-xs text-red-600 border border-red-200 rounded hover:bg-red-50 transition-colors"
+                            title="停止生成"
+                          >
+                            停止
+                          </button>
+                        </>
                       )}
                       {task.status === "completed" && (
                         <CheckCircle2 className="w-5 h-5 text-green-600" />
                       )}
                       {task.status === "failed" && (
                         <XCircle className="w-5 h-5 text-red-600" />
+                      )}
+                      {task.status === "cancelled" && (
+                        <XCircle className="w-5 h-5 text-gray-400" />
                       )}
                     </div>
                   </div>

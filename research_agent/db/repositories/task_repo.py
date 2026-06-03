@@ -100,6 +100,21 @@ class TaskRepo:
             self.session.refresh(task)
         return task
 
+    def mark_cancelled(self, task_id: str) -> Optional[Task]:
+        """任何状态 → cancelled（用户主动取消）。
+
+        区别于 failed：cancelled 表示用户主动中断，不算"任务失败"。
+        """
+        task = self.get(task_id)
+        if task:
+            task.status = "cancelled"
+            task.current_stage = "cancelled"
+            task.error_message = "用户已取消"
+            task.completed_at = datetime.now(timezone.utc)
+            self.session.commit()
+            self.session.refresh(task)
+        return task
+
     def reset_for_retry(self, task_id: str) -> Optional[Task]:
         """failed → pending（重试用）。"""
         task = self.get(task_id)

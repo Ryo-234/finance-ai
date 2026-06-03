@@ -113,7 +113,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       <nav className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-xl font-bold" style={{ fontFamily: "Crimson Pro, serif", color: "#d97706" }}>
+            <Link href="/chat" className="text-xl font-bold" style={{ fontFamily: "Crimson Pro, serif", color: "#d97706" }}>
               金融投研 AI
             </Link>
             <span className="text-gray-300">/</span>
@@ -141,7 +141,26 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
             </div>
             <div className="flex items-center gap-2 ml-4">
               {task.status === "running" && (
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                <>
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                  <button
+                    onClick={async () => {
+                      const token = localStorage.getItem("auth_token");
+                      if (!token) return;
+                      if (!confirm(`确定停止任务"${task.topic}"？\n当前进度 ${task.progress}%`)) return;
+                      try {
+                        await api.cancelTask(task.id, token);
+                        loadTask(token);  // 立即刷新
+                      } catch (err) {
+                        alert("停止失败：" + (err as any).message);
+                      }
+                    }}
+                    className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-1"
+                    title="停止生成"
+                  >
+                    停止生成
+                  </button>
+                </>
               )}
               {task.status === "completed" && (
                 <CheckCircle2 className="w-8 h-8 text-green-600" />
@@ -151,6 +170,9 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               )}
               {task.status === "pending" && (
                 <Clock className="w-8 h-8 text-amber-500" />
+              )}
+              {task.status === "cancelled" && (
+                <XCircle className="w-8 h-8 text-gray-400" />
               )}
             </div>
           </div>
@@ -163,6 +185,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                 {task.status === "running" && (STAGE_LABELS[task.current_stage] || "正在生成报告...")}
                 {task.status === "completed" && "报告已生成"}
                 {task.status === "failed" && "任务失败"}
+                {task.status === "cancelled" && "已取消"}
               </span>
               <span className="font-mono text-amber-600 font-bold">{task.progress}%</span>
             </div>
@@ -170,6 +193,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               <div
                 className={`h-full transition-all duration-700 ${
                   task.status === "failed" ? "bg-red-500" :
+                  task.status === "cancelled" ? "bg-gray-400" :
                   task.status === "completed" ? "bg-green-500" :
                   "bg-gradient-to-r from-amber-500 to-amber-600"
                 }`}

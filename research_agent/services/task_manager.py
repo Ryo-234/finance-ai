@@ -32,7 +32,10 @@ class TaskManager:
     """
 
     def __init__(self):
-        self._running: Dict[str, asyncio.Task] = {}
+        # 跟踪所有运行中任务（兼容 asyncio.Task 和 threading.Thread）
+        self._running: Dict[str, object] = {}
+        # 取消标志（threading.Event 兼容所有后端模式）
+        self._cancel_events: Dict[str, threading.Event] = {}
         self._stats = {"submitted": 0, "completed": 0, "failed": 0}
 
     def submit(
@@ -54,6 +57,8 @@ class TaskManager:
         # 2. 启动后台 asyncio task
         coro = self._run_task(task_id, user_id, topic, report_type, thread_id)
         self._running[task_id] = asyncio.create_task(coro)
+        # 同步创建 cancel event（供 cancel() 和 is_cancelled() 使用）
+        self._cancel_events[task_id] = threading.Event()
         self._stats["submitted"] += 1
 
         logger.info(f"任务已提交: task_id={task_id}, user={user_id}, topic={topic[:30]}")
@@ -128,6 +133,11 @@ class TaskManager:
                 task_repo = TaskRepo(session)
                 task_repo.update_progress(task_id, 90, "report_synthesizer")
 
+            # 3.5 取消检查：用户中途点击了"停止生成"
+            if self.is_cancelled(task_id):
+                logger.info(f"任务已取消，跳过保存: task_id={task_id}")
+                return
+
             # 4. 保存报告 + 写缓存
             answer = result.get("answer", "")
             sources = result.get("sources", [])
@@ -170,21 +180,72 @@ class TaskManager:
             logger.info(f"任务完成: task_id={task_id}, report_id={report_id_str}")
 
         except Exception as e:
-            logger.exception(f"任务执行失败: task_id={task_id}, error={e}")
-            try:
-                with db.get_session() as session:
-                    task_repo = TaskRepo(session)
-                    task_repo.mark_failed(task_id, str(e)[:2000])
-            except Exception:
-                pass
+            # 区分：用户主动取消 vs 系统失败
+            import asyncio as _asyncio
+            if isinstance(e, _asyncio.CancelledError):
+                logger.info(f"任务被用户取消: task_id={task_id}")
+                # mark_cancelled 已在 cancel() 调过，这里只统计
+            else:
+                logger.exception(f"任务执行失败: task_id={task_id}, error={e}")
+                try:
+                    with db.get_session() as session:
+                        task_repo = TaskRepo(session)
+                        task_repo.mark_failed(task_id, str(e)[:2000])
+                except Exception:
+                    pass
+                self._stats["failed"] += 1
+            # 注意：cancelled 不计入 failed
             self._stats["failed"] += 1
         finally:
             self._running.pop(task_id, None)
 
     def cancel(self, task_id: str) -> bool:
-        """取消正在运行的任务。"""
-        if task_id in self._running:
-            self._running[task_id].cancel()
+        """取消正在运行的任务。
+
+        兼容两种后台模式：
+        1. asyncio.Task（manager.submit 启动）→ .cancel() 触发 CancelledError
+        2. threading.Thread（reports.async_generate 启动）→ 设置 Event 标志
+           _run_task 在关键 await 前检查 event，已设置就提前退出
+
+        流程：
+        1. 立即 mark_cancelled（不依赖后台任务的 finally）
+        2. 设置 cancel event（thread 模式检查）
+        3. 调 asyncio.Task.cancel()（asyncio 模式）
+        """
+        if task_id not in self._running:
+            return False
+
+        # 1. 立即标记为 cancelled
+        try:
+            db = DatabaseManager.get_instance()
+            with db.get_session() as session:
+                TaskRepo(session).mark_cancelled(task_id)
+        except Exception as e:
+            logger.warning(f"标记任务为 cancelled 失败: {e}")
+
+        # 2. 设置取消 event（thread 模式）
+        event = self._cancel_events.get(task_id)
+        if event is not None:
+            event.set()
+
+        # 3. 触发 asyncio.Task 取消协议（asyncio 模式）
+        task = self._running.get(task_id)
+        if task is not None and hasattr(task, "cancel"):
+            try:
+                task.cancel()
+            except Exception:
+                pass
+
+        logger.info(f"任务取消信号已发送: task_id={task_id}")
+        return True
+
+    def is_cancelled(self, task_id: str) -> bool:
+        """查询任务是否被取消（_run_task 关键 await 前调用）。"""
+        event = self._cancel_events.get(task_id)
+        if event is not None and event.is_set():
+            return True
+        task = self._running.get(task_id)
+        if task is not None and hasattr(task, "cancelled") and task.cancelled():
             return True
         return False
 

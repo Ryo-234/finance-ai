@@ -265,6 +265,9 @@ async def async_generate(req: AsyncGenerateRequest, request: Request, background
     thread = threading.Thread(target=_runner, daemon=True, name=f"task-{task_id}")
     thread.start()
     manager._running[task_id] = thread
+    # 注册 cancel event（让 cancel() 可以设置标志）
+    import threading as _th
+    manager._cancel_events[task_id] = _th.Event()
     manager._stats["submitted"] += 1
 
     return {

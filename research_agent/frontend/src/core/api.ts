@@ -122,12 +122,14 @@ class APIClient {
     onChunk: (text: string) => void,
     onDone: (response: ChatResponse) => void,
     onError: (error: Error) => void,
-    onStage?: (stage: StageEvent) => void
+    onStage?: (stage: StageEvent) => void,
+    signal?: AbortSignal,
   ): Promise<void> {
     try {
       const res = await fetch(`${this.baseUrl}/api/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal,  // AbortController 信号：前端可随时取消
         body: JSON.stringify({
           message: params.message,
           thread_id: params.thread_id,

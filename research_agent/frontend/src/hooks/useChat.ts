@@ -30,6 +30,7 @@ export interface UseChatReturn {
   selectThread: (id: string | undefined) => void
   createThread: () => Promise<void>
   sendMessage: (message: string, reportType?: string) => Promise<void>
+  cancelInflight: () => void  // 停止当前正在流式输出的请求
   deleteThread: (id: string) => Promise<void>
   startPolling: (threadId: string) => void
 }
@@ -154,8 +155,15 @@ export function useChat(): UseChatReturn {
 
     streamBufferRef.current = ''
 
+    // 长期性：每次发送新建 AbortController，旧的会被 cancelInflight 自动 abort
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()  // 取消上次未完成请求
+    }
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     try {
-      // 使用流式发送（含报告类型）
+      // 使用流式发送（含报告类型 + 取消信号）
       await api.sendMessageStream(
         {
           message,
@@ -206,7 +214,18 @@ export function useChat(): UseChatReturn {
           loadThreads()
         },
         (error: Error) => {
-          // onError
+          // onError（区分用户主动取消 vs 真实错误）
+          if (error.name === 'AbortError') {
+            // 用户主动取消：不显示错误消息
+            console.log('流式请求被用户取消')
+            stageRef.current = null
+            setCurrentStage(null)
+            setCurrentThread(prev => {
+              if (!prev) return prev
+              return { ...prev, status: 'idle' }
+            })
+            return
+          }
           console.error('发送消息失败:', error)
           stageRef.current = null
           setCurrentStage(null)
@@ -226,7 +245,8 @@ export function useChat(): UseChatReturn {
           // onStage（第 5 个参数）
           stageRef.current = stageEvent
           setCurrentStage(stageEvent)
-        }
+        },
+        controller.signal  // 第 6 个参数：传 AbortSignal
       )
     } catch (error) {
       console.error('发送消息失败:', error)
@@ -239,6 +259,14 @@ export function useChat(): UseChatReturn {
       })
     }
   }, [currentThread, loadThreads])
+
+  // 停止当前正在进行的流式请求（前端 AbortController + 后端 finally 清理）
+  const cancelInflight = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+  }, [])
 
   // 删除线程
   const deleteThread = useCallback(async (id: string) => {
@@ -309,6 +337,7 @@ export function useChat(): UseChatReturn {
     selectThread,
     createThread,
     sendMessage,
+    cancelInflight,  // 暴露"停止生成"功能
     deleteThread,
     startPolling,
   }

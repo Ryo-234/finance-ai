@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Search, Plus, Trash2, Send, Bot, User, Loader2, MessageSquare, Sparkles, X, Settings, ArrowLeft, Database } from 'lucide-react'
+import { Search, Plus, Trash2, Send, Bot, User, Loader2, MessageSquare, Sparkles, X, Settings, ArrowLeft, Database, XCircle } from 'lucide-react'
 import Link from 'next/link'
 import { useChat } from '@/hooks/useChat'
 import { cn } from '@/lib/utils'
@@ -133,6 +133,7 @@ export default function HomePage() {
     selectThread,
     createThread,
     sendMessage,
+    cancelInflight,  // "停止生成"按钮调用
     deleteThread,
     startPolling,
   } = useChat()
@@ -387,7 +388,7 @@ export default function HomePage() {
         >
           <div className="flex items-center gap-2">
             <Link
-              href="/dashboard"
+              href="/"
               className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
               style={{
                 background: 'rgba(217,119,6,0.08)',
@@ -395,6 +396,16 @@ export default function HomePage() {
               }}
               onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(217,119,6,0.15)'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(217,119,6,0.08)'}
+              title="返回首页"
+            >
+              首页
+            </Link>
+            <Link
+              href="/dashboard"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              style={{ color: '#57534e' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.04)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               title="返回仪表板"
             >
               仪表板
@@ -402,22 +413,12 @@ export default function HomePage() {
             <Link
               href="/reports"
               className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-              style={{ color: '#57534e' }}
+              style={{ color: '#78716c' }}
               onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.04)'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               title="报告中心"
             >
               报告中心
-            </Link>
-            <Link
-              href="/"
-              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-              style={{ color: '#78716c' }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.04)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-              title="返回首页"
-            >
-              首页
             </Link>
           </div>
           <button
@@ -742,8 +743,29 @@ export default function HomePage() {
                   >
                     {currentThread.status === 'streaming' ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        生成中
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            if (confirm('确定停止当前生成？\n已生成的内容会保留。')) {
+                              cancelInflight()
+                            }
+                          }}
+                          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-all cursor-pointer"
+                          style={{
+                            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                            color: '#fff',
+                            boxShadow: '0 2px 6px rgba(220, 38, 38, 0.3)',
+                          }}
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          停止生成
+                        </button>
+                        <span className="ml-1.5 flex items-center gap-1 text-xs text-stone-400">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          生成中
+                        </span>
                       </>
                     ) : (
                       <>

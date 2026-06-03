@@ -92,16 +92,36 @@ class TaskManager:
                 task_repo.mark_running(task_id, current_stage="planner")
                 task_repo.update_progress(task_id, 10, "planner")
 
-            # 2. 调用金融投研流水线
-            from graph.research_graph import run_finance_research
+            # 2. 调用金融投研流水线（带 progress 回调）
+            from graph.research_graph import run_finance_research, _progress_callbacks
 
-            result = await run_finance_research(
-                user_input=topic,
-                thread_id=thread_id or f"task-{task_id}",
-                report_type=report_type,
-                user_id=user_id,
-                plan_type="pro",  # 任务化后默认 pro（可由用户决定）
-            )
+            def _on_progress(progress: int, current_stage: str, message: str = ""):
+                """阶段进度回调：实时写 DB（前端轮询能看到进度变化）"""
+                try:
+                    db_local = DatabaseManager.get_instance()
+                    with db_local.get_session() as session:
+                        TaskRepo(session).update_progress(
+                            task_id, progress, current_stage
+                        )
+                except Exception as e:
+                    logger.warning(f"进度更新失败 task={task_id}: {e}")
+
+            # 注册 callback 到 _progress_callbacks（_emit_stage 会查这个 dict）
+            tkey = thread_id or f"task-{task_id}"
+            _progress_callbacks[tkey] = _on_progress
+
+            try:
+                result = await run_finance_research(
+                    user_input=topic,
+                    thread_id=tkey,
+                    report_type=report_type,
+                    user_id=user_id,
+                    plan_type="pro",  # 任务化后默认 pro（可由用户决定）
+                    progress_callback=_on_progress,
+                )
+            finally:
+                # 清理 callback（避免内存泄漏）
+                _progress_callbacks.pop(tkey, None)
 
             # 3. 中途进度更新（每个阶段）
             with db.get_session() as session:

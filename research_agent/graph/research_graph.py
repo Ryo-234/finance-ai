@@ -68,22 +68,47 @@ def set_checkpointer(checkpointer: Optional[BaseCheckpointSaver]) -> None:
 _streams: dict[str, "asyncio.Queue"] = {}
 
 
-async def _emit_stage(thread_id: str, stage: str, status: str, message: str = ""):
+async def _emit_stage(
+    thread_id: str,
+    stage: str,
+    status: str,
+    message: str = "",
+    progress: int = None,
+    current_stage: str = None,
+):
     """向流式管道推送阶段进度事件（让前端能看到 Agent 节点的实时状态）。
 
     参数：
         stage: 阶段名（planner / finance_search / finance_knowledge / report_synthesizer）
         status: 状态（running / completed / failed）
         message: 可选的提示文本
+        progress: 可选的后台任务进度（0-100）
+        current_stage: 可选的后台任务当前阶段
     """
+    # 1. 推 SSE 给流式端点
     sq = _streams.get(thread_id or "")
-    if sq is None:
-        return
-    payload = {"stage": stage, "status": status, "message": message}
-    try:
-        await sq.put(("stage", payload))
-    except Exception:
-        pass
+    if sq is not None:
+        payload = {"stage": stage, "status": status, "message": message}
+        try:
+            await sq.put(("stage", payload))
+        except Exception:
+            pass
+
+    # 2. 调后台任务进度回调（如果设置了）
+    if progress is not None:
+        cb = _progress_callbacks.get(thread_id or "")
+        if cb is not None:
+            try:
+                if asyncio.iscoroutinefunction(cb):
+                    await cb(progress=progress, current_stage=current_stage or stage, message=message)
+                else:
+                    cb(progress=progress, current_stage=current_stage or stage, message=message)
+            except Exception:
+                pass
+
+
+# 任务进度回调注册表（thread_id → callback）
+_progress_callbacks: Dict[str, Callable] = {}
 
 
 def set_middleware_manager(manager) -> None:
@@ -296,7 +321,11 @@ async def _planner_node(state: ResearchState) -> dict:
     runtime = _get_runtime_context(thread_id)
 
     # 流式：阶段开始提示
-    await _emit_stage(thread_id, "planner", "running", "正在分析意图和规划任务...")
+    await _emit_stage(
+        thread_id, "planner", "running",
+        "正在分析意图和规划任务...",
+        progress=10, current_stage="planner",
+    )
 
     state_dict = await _apply_before_node("planner", state_dict, runtime)
 
@@ -323,7 +352,10 @@ async def _planner_node(state: ResearchState) -> dict:
         }}
 
     state_dict = await _apply_after_node("planner", state_dict, runtime)
-    await _emit_stage(thread_id, "planner", "completed", "意图分析完成")
+    await _emit_stage(
+        thread_id, "planner", "completed", "意图分析完成",
+        progress=15, current_stage="planner",
+    )
     return state_dict
 
 
@@ -739,7 +771,11 @@ async def _finance_search_node(state: ResearchState) -> dict:
     runtime = _get_runtime_context(thread_id)
 
     # 流式：阶段开始提示（让前端立刻看到"正在搜索数据"）
-    await _emit_stage(thread_id, "finance_search", "running", "正在从金融数据源获取数据...")
+    await _emit_stage(
+        thread_id, "finance_search", "running",
+        "正在从金融数据源获取数据...",
+        progress=20, current_stage="finance_search",
+    )
 
     state_dict = await _apply_before_node("finance_search", state_dict, runtime)
 
@@ -755,7 +791,10 @@ async def _finance_search_node(state: ResearchState) -> dict:
         state_dict["error"] = str(e)
 
     state_dict = await _apply_after_node("finance_search", state_dict, runtime)
-    await _emit_stage(thread_id, "finance_search", "completed", "数据源获取完成")
+    await _emit_stage(
+        thread_id, "finance_search", "completed", "数据源获取完成",
+        progress=40, current_stage="finance_search",
+    )
     return state_dict
 
 
@@ -770,7 +809,11 @@ async def _finance_knowledge_node(state: ResearchState) -> dict:
     runtime = _get_runtime_context(thread_id)
 
     # 流式：阶段开始提示
-    await _emit_stage(thread_id, "finance_knowledge", "running", "正在按报告模板组织数据...")
+    await _emit_stage(
+        thread_id, "finance_knowledge", "running",
+        "正在按报告模板组织数据...",
+        progress=50, current_stage="finance_knowledge",
+    )
 
     state_dict = await _apply_before_node("finance_knowledge", state_dict, runtime)
 
@@ -802,7 +845,11 @@ async def _finance_knowledge_node(state: ResearchState) -> dict:
         state_dict["error"] = str(e)
 
     state_dict = await _apply_after_node("finance_knowledge", state_dict, runtime)
-    await _emit_stage(thread_id, "finance_knowledge", "completed", "知识整理完成，开始生成报告")
+    await _emit_stage(
+        thread_id, "finance_knowledge", "completed",
+        "知识整理完成，开始生成报告",
+        progress=70, current_stage="finance_knowledge",
+    )
     return state_dict
 
 
@@ -813,7 +860,11 @@ async def _report_synthesizer_node(state: ResearchState) -> dict:
     runtime = _get_runtime_context(thread_id)
 
     # 流式：阶段开始提示
-    await _emit_stage(thread_id, "report_synthesizer", "running", "正在生成报告章节...")
+    await _emit_stage(
+        thread_id, "report_synthesizer", "running",
+        "正在生成报告章节...",
+        progress=75, current_stage="report_synthesizer",
+    )
 
     state_dict = await _apply_before_node("report_synthesizer", state_dict, runtime)
 
@@ -845,7 +896,11 @@ async def _report_synthesizer_node(state: ResearchState) -> dict:
             await stream_queue.put(None)
 
     state_dict = await _apply_after_node("report_synthesizer", state_dict, runtime)
-    await _emit_stage(thread_id, "report_synthesizer", "completed", "报告生成完成")
+    await _emit_stage(
+        thread_id, "report_synthesizer", "completed",
+        "报告生成完成",
+        progress=100, current_stage="completed",
+    )
     return state_dict
 
 
@@ -856,6 +911,7 @@ async def run_finance_research(
     user_id: str = "",
     plan_type: str = "free",
     stream_queue: Optional["asyncio.Queue"] = None,
+    progress_callback: Optional["callable"] = None,
 ) -> dict:
     """运行金融投研流水线。
 

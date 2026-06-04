@@ -43,26 +43,28 @@ class AlipayConfig:
 
     @classmethod
     def from_env(cls) -> "AlipayConfig":
-        """从环境变量加载配置（优先从 .pem 文件加载密钥）。"""
+        """从环境变量加载配置（支持 3 种密钥来源）。"""
         debug = os.getenv("ALIPAY_DEBUG", "true").lower() == "true"
 
-        # 优先从 .pem 文件加载（避免 .env 多行字符串问题）
-        priv_path = os.getenv("ALIPAY_PRIVATE_KEY_PATH", "")
-        pub_path = os.getenv("ALIPAY_PUBLIC_KEY_PATH", "")
-
         app_private_key = ""
-        if priv_path and Path(priv_path).exists():
-            app_private_key = Path(priv_path).read_text(encoding="utf-8").strip()
-            logger.info(f"从文件加载应用私钥: {priv_path}")
-        else:
-            app_private_key = os.getenv("ALIPAY_APP_PRIVATE_KEY", "")
-
         alipay_public_key = ""
-        if pub_path and Path(pub_path).exists():
-            alipay_public_key = Path(pub_path).read_text(encoding="utf-8").strip()
-            logger.info(f"从文件加载支付宝公钥: {pub_path}")
-        else:
-            alipay_public_key = os.getenv("ALIPAY_PUBLIC_KEY", "")
+
+        # 来源 1：环境变量直接传 PEM 内容（生产/PaaS 推荐）
+        app_private_key = os.getenv("ALIPAY_APP_PRIVATE_KEY", "")
+        alipay_public_key = os.getenv("ALIPAY_PUBLIC_KEY", "")
+
+        # 来源 2：环境变量传 .pem 文件路径（本地开发）
+        if not app_private_key:
+            priv_path = os.getenv("ALIPAY_PRIVATE_KEY_PATH", "")
+            if priv_path and Path(priv_path).exists():
+                app_private_key = Path(priv_path).read_text(encoding="utf-8").strip()
+                logger.info(f"从文件加载应用私钥: {priv_path}")
+
+        if not alipay_public_key:
+            pub_path = os.getenv("ALIPAY_PUBLIC_KEY_PATH", "")
+            if pub_path and Path(pub_path).exists():
+                alipay_public_key = Path(pub_path).read_text(encoding="utf-8").strip()
+                logger.info(f"从文件加载支付宝公钥: {pub_path}")
 
         return cls(
             appid=os.getenv("ALIPAY_APPID", ""),

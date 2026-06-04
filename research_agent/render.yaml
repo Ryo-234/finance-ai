@@ -1,0 +1,52 @@
+# Render 部署配置（YAML 格式，Render 会自动识别）
+# https://render.com/docs/blueprint-spec
+
+services:
+  # ============== 后端 API ==============
+  - type: web
+    name: research-agent-api
+    runtime: python
+    rootDir: research_agent
+    plan: free
+    region: oregon  # 离中国大陆最近的免费节点（其实是美国西海岸）
+    branch: main
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: gunicorn api.app:app --workers 2 --bind 0.0.0.0:$PORT --timeout 120
+    healthCheckPath: /api/health
+    envVars:
+      # ===== 数据库 =====
+      - key: DATABASE_URL
+        fromDatabase:
+          name: research-agent-db
+          property: connectionString
+
+      # ===== 支付宝沙箱 =====
+      - key: ALIPAY_DEBUG
+        value: "true"
+      - key: ALIPAY_APPID
+        value: "9021000164641571"
+      # 私钥/公钥在 Render 控制台手动添加（多行 PEM 不能写在 yaml 里）
+
+      # ===== LLM API Keys =====
+      - key: DASHSCOPE_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: MINIMAX_API_KEY
+        sync: false
+      - key: MODEL_PROVIDER
+        value: "minimax"
+      - key: MINIMAX_DEFAULT_MODEL
+        value: "MiniMax-M2.7-highspeed"
+
+      # ===== 管理员白名单 =====
+      - key: ADMIN_EMAILS
+        sync: false
+
+  # ============== PostgreSQL 数据库 ==============
+  - type: pserv
+    name: research-agent-db
+    runtime: postgresql
+    plan: free  # 90 天免费，到期后数据需迁移
+    region: oregon
+    # Render 自动注入 DATABASE_URL 到 web service

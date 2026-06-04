@@ -44,3 +44,7 @@ pytest-asyncio>=0.21.0
 ruff>=0.1.0
 black>=23.0.0
 python-dotenv>=1.0.0
+
+# 支付集成
+python-alipay-sdk>=3.4.0
+qrcode[pil]>=7.4.0

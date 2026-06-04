@@ -8,6 +8,17 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
+def _utc_iso(dt) -> str:
+    """统一把 datetime 序列化为带 Z 后缀的 UTC ISO 字符串（避免 JS 解析时区错乱）。"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # 朴素 datetime 视为 UTC
+        dt = dt.replace(tzinfo=timezone.utc)
+    # 用 isoformat() 然后把 +00:00 替换为 Z
+    return dt.isoformat().replace("+00:00", "Z")
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -44,9 +55,9 @@ class User(Base):
             "email": self.email,
             "display_name": self.display_name,
             "plan_type": self.plan_type,
-            "plan_expires_at": self.plan_expires_at.isoformat() if self.plan_expires_at else None,
+            "plan_expires_at": _utc_iso(self.plan_expires_at) if self.plan_expires_at else None,
             "is_active": self.is_active,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": _utc_iso(self.created_at) if self.created_at else None,
         }
 
 
@@ -88,7 +99,7 @@ class Report(Base):
             "compliance_status": self.compliance_status,
             "token_used": self.token_used,
             "thread_id": self.thread_id,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": _utc_iso(self.created_at) if self.created_at else None,
         }
 
 
@@ -117,7 +128,7 @@ class UsageRecord(Base):
             "record_type": self.record_type,
             "amount": self.amount,
             "metadata": self.metadata_json,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": _utc_iso(self.created_at) if self.created_at else None,
         }
 
 
@@ -159,10 +170,10 @@ class ReportCache(Base):
             "topic": self.topic,
             "report_type": self.report_type,
             "report_id": self.report_id,
-            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "expires_at": _utc_iso(self.expires_at) if self.expires_at else None,
             "hit_count": self.hit_count,
-            "last_hit_at": self.last_hit_at.isoformat() if self.last_hit_at else None,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_hit_at": _utc_iso(self.last_hit_at) if self.last_hit_at else None,
+            "created_at": _utc_iso(self.created_at) if self.created_at else None,
         }
 
 
@@ -210,8 +221,107 @@ class Task(Base):
             "current_stage": self.current_stage,
             "result_report_id": self.result_report_id,
             "error_message": self.error_message,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "started_at": self.started_at.isoformat() if self.started_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "created_at": _utc_iso(self.created_at) if self.created_at else None,
+            "updated_at": _utc_iso(self.updated_at) if self.updated_at else None,
+            "started_at": _utc_iso(self.started_at) if self.started_at else None,
+            "completed_at": _utc_iso(self.completed_at) if self.completed_at else None,
+        }
+
+
+class Subscription(Base):
+    """订阅记录表。
+
+    状态机：active → cancelled / expired
+    一条记录代表一个完整订阅周期，到期后创建新记录。
+    """
+
+    __tablename__ = "subscriptions"
+
+    id = Column(String(32), primary_key=True, default=_new_uuid)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    plan_type = Column(String(20), nullable=False)  # pro / enterprise
+    billing_cycle = Column(String(20), nullable=False)  # monthly / yearly
+    status = Column(String(20), default="active", index=True)  # active / cancelled / expired
+    started_at = Column(DateTime, default=_utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    auto_renew = Column(Integer, default=1)  # 1=开启 0=关闭
+    cancelled_at = Column(DateTime, nullable=True)
+    order_no = Column(String(64), default="")  # 关联的首单订单号
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    user = relationship("User")
+
+    __table_args__ = (
+        Index("idx_subs_user_status", "user_id", "status"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "plan_type": self.plan_type,
+            "billing_cycle": self.billing_cycle,
+            "status": self.status,
+            "started_at": _utc_iso(self.started_at) if self.started_at else None,
+            "expires_at": _utc_iso(self.expires_at) if self.expires_at else None,
+            "auto_renew": bool(self.auto_renew),
+            "cancelled_at": _utc_iso(self.cancelled_at) if self.cancelled_at else None,
+            "order_no": self.order_no,
+            "created_at": _utc_iso(self.created_at) if self.created_at else None,
+        }
+
+
+class Order(Base):
+    """订单表。
+
+    状态机：pending → paid / failed / cancelled → refunded
+    """
+
+    __tablename__ = "orders"
+
+    id = Column(String(32), primary_key=True, default=_new_uuid)
+    order_no = Column(String(64), unique=True, nullable=False, index=True)  # 商户订单号
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    plan_type = Column(String(20), nullable=False)
+    billing_cycle = Column(String(20), nullable=False)
+    amount = Column(Integer, nullable=False)  # 单位：分
+    status = Column(String(20), default="pending", index=True)  # pending / paid / failed / cancelled / refunded
+    payment_method = Column(String(20), default="alipay")
+    qr_code_url = Column(Text, default="")  # 支付宝返回的支付链接（用于生成二维码）
+    paid_at = Column(DateTime, nullable=True)
+    expired_at = Column(DateTime, nullable=False)  # 订单过期时间（默认 15 分钟）
+    transaction_id = Column(String(64), default="")  # 支付宝交易号
+    refund_amount = Column(Integer, default=0)  # 退款金额（分）
+    refund_reason = Column(Text, default="")
+    refunded_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_utcnow, index=True)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    user = relationship("User")
+
+    __table_args__ = (
+        Index("idx_orders_user_created", "user_id", "created_at"),
+        Index("idx_orders_status", "status"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "order_no": self.order_no,
+            "user_id": self.user_id,
+            "plan_type": self.plan_type,
+            "billing_cycle": self.billing_cycle,
+            "amount": self.amount,
+            "amount_yuan": self.amount / 100,  # 便于前端展示
+            "status": self.status,
+            "payment_method": self.payment_method,
+            "qr_code_url": self.qr_code_url,
+            "paid_at": _utc_iso(self.paid_at) if self.paid_at else None,
+            "expired_at": _utc_iso(self.expired_at) if self.expired_at else None,
+            "transaction_id": self.transaction_id,
+            "refund_amount": self.refund_amount,
+            "refund_reason": self.refund_reason,
+            "refunded_at": _utc_iso(self.refunded_at) if self.refunded_at else None,
+            "created_at": _utc_iso(self.created_at) if self.created_at else None,
         }

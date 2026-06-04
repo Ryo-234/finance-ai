@@ -1,0 +1,49 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Databases
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+api_debug.log
+api_server.log
+api_server2.log
+api_test.log
+frontend.log
+frontend_new.log
+
+# Virtual environments
+.venv
+venv/
+env/
+
+# Local data
+uploads/
+data/alipay_app_private_key.pem
+data/alipay_public_key.pem
+
+# Claude / skills / agents state
+.claude/
+.claude/skills/
+.omc/
+.omc-state.json
+.minimax/
+.gstack/
+.worktrees
+.playwright-mcp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

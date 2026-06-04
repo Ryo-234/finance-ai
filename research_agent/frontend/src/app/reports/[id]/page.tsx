@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Spinner } from "@/components/Spinner";
 import { EmptyState } from "@/components/EmptyState";
-import { ArrowLeft, FileText, Download, Share2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { ArrowLeft, FileText, Download, Share2, LogOut } from "lucide-react";
 
 interface Report {
   id: string;
@@ -54,6 +55,20 @@ export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
+  const { user, logout } = useAuth();
+  const router = useRouter();
+
+  const planName =
+    user?.plan_type === "pro"
+      ? "专业版"
+      : user?.plan_type === "enterprise"
+        ? "企业版"
+        : "免费版";
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("auth_token");
@@ -98,48 +113,100 @@ export default function ReportDetailPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-100 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-xl font-bold" style={{ fontFamily: "Crimson Pro, serif", color: "#d97706" }}>
+        {/* 主行：品牌 + 站点导航 + 用户信息（与其他页面保持一致） */}
+        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-8">
+            <Link href="/chat" className="text-xl font-bold" style={{ fontFamily: "Crimson Pro, serif", color: "#d97706" }}>
               金融投研 AI
             </Link>
-            <span className="text-gray-300">/</span>
-            <Link href="/reports" className="text-sm text-gray-500 hover:text-gray-900">报告中心</Link>
-            <span className="text-gray-300">/</span>
-            <span className="text-sm text-gray-700 truncate max-w-xs">{report.title}</span>
+            <div className="flex gap-5 text-sm">
+              <Link href="/chat" className="text-gray-500 hover:text-gray-900 transition-colors">对话研究</Link>
+              <Link href="/dashboard" className="text-gray-500 hover:text-gray-900 transition-colors">仪表板</Link>
+              <Link href="/reports" className="text-amber-700 font-medium">报告中心</Link>
+            </div>
           </div>
-          <div className="flex items-center gap-3 text-xs">
-            <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full">
-              {TYPE_LABELS[report.report_type] || report.report_type}
-            </span>
-            <span className={report.compliance_status === "passed" ? "text-green-600" : "text-red-500"}>
-              {report.compliance_status === "passed" ? "合规通过" : "合规未通过"}
-            </span>
-            <span className="w-px h-3 bg-gray-200" />
+          <div className="flex items-center gap-3 text-sm">
+            <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full text-xs">{planName}</span>
+            <span className="text-gray-600">{user?.display_name || user?.email}</span>
             <button
-              onClick={() => downloadReport(report.id, "pdf").catch(() => alert("PDF 导出失败"))}
-              className="px-2.5 py-1 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors flex items-center gap-1"
-              title="导出 PDF 文件"
+              onClick={handleLogout}
+              className="text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+              title="退出登录"
             >
-              <Download className="w-3.5 h-3.5" />
-              导出 PDF
+              <LogOut className="w-3.5 h-3.5" />
+              退出
             </button>
-            <button
-              onClick={() => downloadReport(report.id, "markdown").catch(() => alert("Markdown 导出失败"))}
-              className="px-2.5 py-1 rounded-lg border border-gray-300 text-gray-600 hover:border-amber-300 hover:text-amber-700 transition-colors flex items-center gap-1"
-              title="导出 Markdown 源文件"
-            >
-              <Download className="w-3.5 h-3.5" />
-              .md
-            </button>
-            <span className="w-px h-3 bg-gray-200" />
-            <Link href="/chat" className="text-gray-500 hover:text-amber-600 transition-colors">对话研究</Link>
-            <Link href="/dashboard" className="text-gray-500 hover:text-amber-600 transition-colors">仪表板</Link>
+          </div>
+        </div>
+
+        {/* 报告行：面包屑 + 标题 + 元信息 + 操作 */}
+        <div className="border-t border-gray-50 bg-gradient-to-b from-gray-50/30 to-white">
+          <div className="max-w-6xl mx-auto px-6 py-3 flex items-center gap-4">
+            {/* 面包屑 + 标题 */}
+            <nav className="flex items-center gap-2 text-sm text-gray-400 min-w-0 flex-1">
+              <Link href="/reports" className="hover:text-gray-600 transition-colors whitespace-nowrap">
+                报告中心
+              </Link>
+              <span className="text-gray-300">/</span>
+              <span className="text-gray-700 font-medium truncate" title={report.title}>
+                {report.title}
+              </span>
+            </nav>
+
+            {/* 分隔 */}
+            <div className="w-px h-5 bg-gray-200 shrink-0" />
+
+            {/* 元信息：类型 + 合规 */}
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-md text-xs font-medium">
+                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
+                {TYPE_LABELS[report.report_type] || report.report_type}
+              </span>
+              <span
+                className={
+                  report.compliance_status === "passed"
+                    ? "inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600"
+                    : "inline-flex items-center gap-1.5 text-xs font-medium text-red-500"
+                }
+              >
+                <span
+                  className={
+                    report.compliance_status === "passed"
+                      ? "w-1.5 h-1.5 bg-emerald-500 rounded-full"
+                      : "w-1.5 h-1.5 bg-red-500 rounded-full"
+                  }
+                />
+                {report.compliance_status === "passed" ? "合规通过" : "合规未通过"}
+              </span>
+            </div>
+
+            {/* 分隔 */}
+            <div className="w-px h-5 bg-gray-200 shrink-0" />
+
+            {/* 操作按钮 */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => downloadReport(report.id, "pdf").catch(() => alert("PDF 导出失败"))}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 transition-colors"
+                title="导出 PDF 文件"
+              >
+                <Download className="w-3.5 h-3.5" />
+                导出 PDF
+              </button>
+              <button
+                onClick={() => downloadReport(report.id, "markdown").catch(() => alert("Markdown 导出失败"))}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-200 text-gray-600 text-xs font-medium hover:border-amber-300 hover:text-amber-700 transition-colors"
+                title="导出 Markdown 源文件"
+              >
+                <Download className="w-3.5 h-3.5" />
+                .md
+              </button>
+            </div>
           </div>
         </div>
       </nav>
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm p-8">
           <div className="mb-6 pb-6 border-b border-gray-100">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">{report.title}</h1>

@@ -173,9 +173,11 @@ def create_app() -> FastAPI:
 
     # 注册金融投研路由
     from .routers import auth, reports, billing, tasks
+    from .routers import admin_billing
     app.include_router(auth.router, tags=["auth"])
     app.include_router(reports.router, tags=["reports"])
     app.include_router(billing.router, tags=["billing"])
+    app.include_router(admin_billing.router, tags=["admin-billing"])
     app.include_router(tasks.router, tags=["tasks"])
 
     return app
